@@ -1,0 +1,1 @@
+BUILD_TOOL_PREFIX=arm-none-linux-gnueabi-
