@@ -5,3 +5,4 @@
 hippocam_vt21
 hippocam_vt21_config/*
 rf/*
+*.code-workspace
