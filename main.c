@@ -1220,9 +1220,9 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* rec_fl
         && record_on_radio && (*(currentCommand) != FINISH)
         /*&&(!is_rec_failed || is_memory_full)*/)
     {
-        dump_var();
+/*        dump_var();
         gblSetCmd(SLEEP);
-        *(currentCommand) = SLEEP;
+        *(currentCommand) = SLEEP;*/
     }
 }
 
@@ -1333,7 +1333,7 @@ int main(int argc, char *argv[])
     sd_totalspace           = 0;
     sd_status               = SD_STATUS_EMPTY;
 
-    stop_netconnect         = 0xFF;
+    stop_netconnect         = 1;//0xFF;
     is_netconnect_on        = 0;
     is_cam_failed           = 0;
     rf_off                  = 0;
@@ -2120,15 +2120,14 @@ int main(int argc, char *argv[])
                         {
                             gpio_set_dir(wakeup_en, 0);//set input, разрешаем прерывание
                             system("/bin/echo mem > /sys/power/state");
+                            // вcё - ушли в сон...
+
+                            // вышли из сна
                             gpio_set_dir(wakeup_en, 1);
                             gpio_set_value(wakeup_en, 0);
                         }
                     }
-                    // вcё - ушли в сон...
-
-
-
-                    // вышли из сна
+                    
                     // log_threads("WAKE UP\r\n");
 
                     gblSetCmd(NO_COMMAND);

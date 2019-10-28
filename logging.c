@@ -159,6 +159,7 @@ int initLogFile()
     pFilePos = fopen("/opt/logpos", "rb+");
     if (pFilePos == NULL)
     {
+        int FPos = 0;
         WARN("Cannot open logpos file\r\n");
 
         pFilePos = fopen("/opt/logpos", "wb+");
@@ -168,6 +169,15 @@ int initLogFile()
             ERR("Cannot create logpos file\r\n");
             fclose(pFile);
             pFile = NULL;
+            return FAILURE;
+        }
+        if((fwrite(&FPos, sizeof(char), 4, pFilePos)) != 4)
+        {
+            ERR("Cannot write to logpos file\r\n");
+            fclose(pFile);
+            pFile       = NULL;
+            fclose(pFilePos);
+            pFilePos    = NULL;
             return FAILURE;
         }
     }
@@ -228,7 +238,7 @@ int initLogFile()
             return FAILURE;
         }
         curLogFilePos = readFPos;
-        //debug("Current log file position: %x\r\n", curLogFilePos);
+        debug("Current log file position: %x\r\n", curLogFilePos);
     }
 
     fclose(pFilePos);

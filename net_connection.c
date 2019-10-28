@@ -625,7 +625,7 @@ u8 ReadNetSettings()
                         t8              = 0;
                         parserStatus    = parserStatus | MODE_SET;
                     }
-                    else if(strcasecmp(token, "accesspoint") == 0)
+                    else if(strcasecmp(token, "ap") == 0)
                     {
                         parserStep      = 0;
                         t8              = 1;
@@ -718,6 +718,25 @@ u8 ReadNetSettings()
     return SUCCESS;
 }
 
+void check_nc_files_debug()
+{
+    struct stat st;
+
+    #define NC1_FILE    "/tmp/nc1"
+    #define NC0_FILE    "/tmp/nc0"
+
+    if(!stat(NC0_FILE, &st))
+    {
+        remove(NC0_FILE);
+        stop_netconnect = 1;
+    }
+    
+    if(!stat(NC1_FILE, &st))
+    {
+        remove(NC1_FILE);
+        stop_netconnect = 0;
+    }
+}
 
 void *netCommThrFxn(void *arg)
 {
@@ -765,13 +784,15 @@ void *netCommThrFxn(void *arg)
 
     // если в файле другие настройки - меняем
     ReadNetSettings();
+    set_access_point();    
+    set_wifi_net();// modify wpa_supplicant.conf
 
     if(pthread_mutex_init(&socket_mutex, NULL) != 0)
     {
         ERR("\r\n socket_mutex init failed\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         cleanup(THREAD_FAILURE, STRM_QID);
-    }    
+    }
     if(pthread_cond_init(&socket_cond, NULL) != 0)
     {
         ERR("\r\n socket_cond init failed\r\n");
@@ -782,79 +803,77 @@ void *netCommThrFxn(void *arg)
     // остановить wifi, что то одно может быть запущено
     system("/usr/bin/killall hostapd");
     system("/usr/bin/killall wpa_supplicant");
-    usleep(2000000);
+    usleep(1000000);
 
-    if(is_access_point == 1)
+    //присваиваем адрес чтобы приложения нормально открыли себе сокеты
+    system("/sbin/ifconfig wlan0 192.168.0.1 up");
+    usleep(1000000);
+    // для правильной работы библиотеки live для видеотрансляции
+    system("/sbin/route add -host 228.67.43.91 dev wlan0");
+    system("/sbin/ifconfig wlan0 down");
+
+    remove("/var/run/hostapd/wlan0");
+
+    network_off = stop_netconnect;
+
+    if(!network_off)
     {
-        // поднимаем точку доступа
-    	err = remove("/var/run/hostapd/wlan0");
-        if(err != 0)
+        if(is_access_point == 1)
         {
-            ERR("File /var/run/hostapd/wlan0 cannot be deleted: %s\r\n", strerror(errno));
+            // поднимаем точку доступа
+            //system("/sbin/ifconfig wlan0 192.168.0.1 netmask 255.255.255.0 up");
+            //usleep(2000000);
+            system("/usr/local/bin/hostapd -B /etc/hostapd.conf");
+            usleep(2000000);
+            system("/sbin/ifconfig wlan0 192.168.0.1");
+            usleep(500000);
+            system("/usr/sbin/udhcpd -S /etc/udhcpd.conf");
+            usleep(1000000);
+        }
+        else
+        {
+            // поднимаем режим абонента            
+            system("/usr/local/sbin/wpa_supplicant -Dnl80211 -c/etc/wpa_supplicant.conf -iwlan0 -qq -B > /dev/null");
+            usleep(2000000);
+
+            // ждем присоединения к внешней точке доступа
+            while(1)
+            {
+                connect_res = check_wifi_connection();
+                if(connect_res == SUCCESS)
+                {
+                    break;
+                }
+                usleep(2000000);
+                currentCommand = gblGetCmd();
+                if((currentCommand == FINISH) || (currentCommand == SLEEP))
+                {
+                    //debug("Net connection thread finishing ...\r\n");
+                    goto cleanup;
+                }
+            }
+
+            // только после присоединения получаем ip 
+            // system("/sbin/udhcpc -i wlan0 -A 5 -t 5");
+            system("/sbin/udhcpc -q -b -i wlan0");
+            usleep(3000000);
         }
 
-        set_access_point();
-
-        system("/sbin/ifconfig wlan0 down");
-
-
-        system("/sbin/ifconfig wlan0 192.168.0.1 netmask 255.255.255.0 up");
-        usleep(2000000);
-        system("/usr/local/bin/hostapd -B /etc/hostapd.conf");
-        usleep(2000000);
-        system("/sbin/ifconfig wlan0 192.168.0.1");
-        usleep(2000000);
-        system("/usr/sbin/udhcpd -S /etc/udhcpd.conf");      
-        usleep(3000000);
-    }
-    else
-    {
-        // поднимаем режим абонента
-        // modify wpa_supplicant.conf
-        set_wifi_net();
-        
-        system("/usr/local/sbin/wpa_supplicant -Dnl80211 -c/etc/wpa_supplicant.conf -iwlan0 -qq -B > /dev/null");
-        usleep(2000000);
-
-        // ждем присоединения к внешней точки доступа
-        while(1)
+        // check if ip address set
+        while(EthIfaceCheckIP() < 0)
         {
-            connect_res = check_wifi_connection();
-            if(connect_res == SUCCESS)
-            {
-                break;
-            }
-            usleep(2000000);
             currentCommand = gblGetCmd();
             if((currentCommand == FINISH) || (currentCommand == SLEEP))
             {
-                //debug("Net connection thread finishing ...\r\n");
+                // debug("Net connection thread finishing ...\r\n");
                 goto cleanup;
             }
+            usleep(1000000);
         }
 
-
-        // только после присоединения получаем ip 
-        // system("/sbin/udhcpc -i wlan0 -A 5 -t 5");
-        system("/sbin/udhcpc -q -b -i wlan0");
-        usleep(3000000);
+        // для правильной работы библиотеки live для видеотрансляции
+        //system("/sbin/route add -host 228.67.43.91 dev wlan0");
     }
-
-    // check if ip address set
-    while(EthIfaceCheckIP() < 0)
-    {
-        currentCommand = gblGetCmd();
-        if((currentCommand == FINISH) || (currentCommand == SLEEP))
-        {
-            // debug("Net connection thread finishing ...\r\n");
-            goto cleanup;
-        }
-        usleep(1000000);
-    }
-
-    // для правильной работы библиотеки live для видеотрансляции
-    system("/sbin/route add -host 228.67.43.91 dev wlan0");
-    usleep(2000000);
 
     // сеть есть - можем запустить файловый сервер
     if(set_netbios_name() != 0)
@@ -1034,13 +1053,15 @@ void *netCommThrFxn(void *arg)
     {
         currentCommand = gblGetCmd();
 
-        if((currentCommand == FINISH) || (currentCommand == SLEEP) /*|| (stop_netconnect == 1)*/)
+        check_nc_files_debug();//
+
+        if((currentCommand == FINISH) || (currentCommand == SLEEP))
         {
             //debug("Net connection thread finishing ...\r\n");
             goto cleanup;
         }
 
-        if(network_off == 0) // если сеть выключена не проверяем её статус
+        if(!network_off) // если сеть не выключена проверяем её статус
         {
             if(time(NULL) - prev_check_time >= 30) // проверяем каждые 30 сек.
             {
@@ -1063,24 +1084,21 @@ void *netCommThrFxn(void *arg)
             }
         }
 
-
         if(stop_netconnect == 1)    // если по радиоканалу пришел сигнал ВЫКЛючения сети
         {
-            if(network_off == 0)
+            if(!network_off)
             {
                 if(is_access_point == 1)
                 {
-                    system("/usr/bin/killall -s 2 hostapd");
-                    usleep(2000000);
-                    system("/usr/bin/killall -s 9 hostapd");
+                    system("/usr/bin/killall hostapd");
+                    system("/usr/bin/killall udhcpd");
                 }
                 else
                 {
                     // остановить wifi
-                    system("/usr/bin/killall -s 2 wpa_supplicant");
-                    usleep(2000000);
-                    system("/usr/bin/killall -s 9 wpa_supplicant");
+                    system("/usr/bin/killall wpa_supplicant");
                 }
+                usleep(2000000);
 
                 network_off         = 1;
                 is_netconnect_on    = 0;
@@ -1088,22 +1106,28 @@ void *netCommThrFxn(void *arg)
         }
         else if(stop_netconnect == 0) // если по радиоканалу пришел сигнал ВКЛючения сети
         {
-            if(network_off == 1)
+            if(network_off)
             { 
                 if(is_access_point == 1)
                 {
                     //ReadNetSettings();
                     //set_access_point();
 
+                    //system("/sbin/ifconfig wlan0 192.168.0.1 netmask 255.255.255.0 up");
+                    //usleep(2000000);
                     system("/usr/local/bin/hostapd -B /etc/hostapd.conf");
                     usleep(2000000);
+                    system("/sbin/ifconfig wlan0 192.168.0.1");
+                    usleep(500000);
+                    system("/usr/sbin/udhcpd -S /etc/udhcpd.conf");
+                    usleep(1000000);
                 }
                 else
                 {
                     // при запуске режима абонент каждый раз происходит задержка кадров видео,
                     // которую решить не удалось, нужно реализовывать балансировку подачи кадров:
                     // иногда пропускать кадры, иногда добавлять дополнительные
-                    usleep(2000000);
+                    //usleep(2000000);
                     system("/usr/local/sbin/wpa_supplicant -Dnl80211 -c/etc/wpa_supplicant.conf -iwlan0 -qq -B > /dev/null");
                     usleep(2000000);
 
@@ -1127,14 +1151,17 @@ void *netCommThrFxn(void *arg)
                     usleep(3000000);
                 }
 
+                // для правильной работы библиотеки live для видеотрансляции
+                system("/sbin/route add -host 228.67.43.91 dev wlan0");
+
                 network_off         = 0;
             }
         }
 
 
         // если поменялись параметры аудио/видео
-        if((reboot_now || strm_error || ((video_bitrate != video_bitrate_prev) 
-       || (audio_channels != audio_channels_prev))))
+        if((reboot_now || strm_error || 
+            ((video_bitrate != video_bitrate_prev) || (audio_channels != audio_channels_prev))))
         {
 
             reboot_now  = 0;
@@ -1148,7 +1175,6 @@ void *netCommThrFxn(void *arg)
                 {
                     Rendezvous_meet(hRendezvousFinishWSS);
                 }
-
 
 		    	if (pthread_join(wisStreamThread, &ret) == 0)
 		    	{
@@ -1330,32 +1356,22 @@ cleanup:
 
     if(is_access_point == 1)
     {
-        system("/usr/bin/killall -s 2 hostapd");
-        usleep(2000000);
-        system("/usr/bin/killall -s 9 hostapd");
-        usleep(500000);
-        system("/usr/bin/killall -s 2 udhcpd");
-        usleep(1000000);
-        system("/usr/bin/killall -s 9 udhcpd");
+        system("/usr/bin/killall hostapd");
+        system("/usr/bin/killall udhcpd");
+        //usleep(1000000);
     }
     else
     {
         // остановить wifi
-        system("/usr/bin/killall -s 2 wpa_supplicant");
-        usleep(1000000);
-        system("/usr/bin/killall -s 9 wpa_supplicant");
-        usleep(500000);
-        system("/usr/bin/killall -s 2 udhcpc");
-        usleep(1000000);
-        system("/usr/bin/killall -s 9 udhcpc");
+        system("/usr/bin/killall wpa_supplicant");
+        system("/usr/bin/killall udhcpc");
+        //usleep(500000);
     }
 
-    system("/usr/bin/killall -s 2 smbd");
+    system("/usr/bin/killall smbd");
+    system("/usr/bin/killall nmbd");
+
     usleep(1000000);
-    system("/usr/bin/killall -s 2 nmbd");
-    usleep(1000000);
-    system("/usr/bin/killall -s 9 smbd");
-    system("/usr/bin/killall -s 9 nmbd");
 
     if(envp->hRendezvousFinishNC != NULL)
     {
