@@ -967,7 +967,6 @@ void AVRecDataFunc(packet_info2 *pi){}; // заглушка на месте фу
 // верификация и сохранение полученных параметров, выполнение действий, связанных с ними
 u8 AVRecParamFunc(u8 act, u8 fType, u8 *data)
 {
-    FILE   *pFile;
     u8      t8;
     u16     t16;
     u32     t32;
@@ -1030,28 +1029,17 @@ u8 AVRecParamFunc(u8 act, u8 fType, u8 *data)
                     t8 = data[0];
                     if(t8 == APP_REC_MODE_REC)
                     {   // don't change work_mode itself, flag a command
-                        pthread_mutex_lock(&start_rec_mutex);
-                        pFile = fopen("/opt/start_rec", "w");
-                        if(pFile != NULL)
-                        {
-                            fclose(pFile);
-                            pFile = NULL;
-                        }
-                        pthread_mutex_unlock(&start_rec_mutex);
-                        debug("RECORD ON (net)\r\n");
+                        fix_record_state(1);
+                        start_rec = 1;
+                        debug("initiated from net\r\n");
                     }
                     else
                     {
                         if((t8 == APP_REC_MODE_IDLE) && (new_work_mode == APP_REC_MODE_REC))
                         {
-                            pthread_mutex_lock(&start_rec_mutex);
-                            if(remove( "/opt/start_rec" ) != 0 )
-                            {
-                                WARN("Error deleting file /opt/start_rec\r\n");
-                            }
-                            sync();
-                            pthread_mutex_unlock(&start_rec_mutex);
-                            debug("RECORD OFF (net)\r\n");
+                            fix_record_state(0);
+                            start_rec = 0;
+                            debug("stopped from net\r\n");
                         }
                         else
                         {

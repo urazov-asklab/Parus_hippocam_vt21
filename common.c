@@ -5,8 +5,58 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <errno.h>
+#include <string.h>
 
 #include "common.h"
+
+void fix_record_state(int rec_on)
+{
+    FILE *pFile;
+    pthread_mutex_lock(&start_rec_mutex);
+    if(rec_on)
+    {
+        pFile = fopen("/opt/start_rec", "w");
+        if(pFile != NULL)
+        {
+            fclose(pFile);
+            pFile = NULL;
+        }   
+        debug("RECORD ON\r\n");
+    }
+    else
+    {
+        if(remove( "/opt/start_rec" ) != 0 )
+        {
+            WARN("Error deleting file /opt/start_rec: %s\r\n", strerror(errno));
+        }
+        sync();
+        debug("RECORD OFF\r\n");
+    }
+    pthread_mutex_unlock(&start_rec_mutex);
+}
+
+int get_record_state()
+{
+    FILE *pFile;
+    int state;
+
+    pthread_mutex_lock(&start_rec_mutex);
+    // если этот файл существует, то запись пользователь намеренно не останавливал, поэтому запускаем её снова
+    pFile = fopen ("/opt/start_rec" , "r" );
+    if(pFile != NULL)
+    {
+        state = 1;
+        fclose(pFile);
+        pFile = NULL;
+    }
+    else
+    {
+        state = 0;
+    }
+    pthread_mutex_unlock(&start_rec_mutex);
+    return state;
+}
 
 INLINE void log_threads(char *msg)
 {
@@ -123,4 +173,13 @@ u64 uptime_ms()
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (u64)ts.tv_sec*1000 + (u64)ts.tv_nsec/1000000;
+}
+
+
+u32 uptime()
+{
+    struct timespec ts; 
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (u64)ts.tv_sec;
 }

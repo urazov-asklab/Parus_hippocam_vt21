@@ -194,6 +194,9 @@ volatile u16            half_vrate;
 volatile u8             samba_on;
 volatile u8             stop_netconnect;
 volatile u8             is_netconnect_on;
+volatile u8             wifi_sleep_condition;
+volatile u8             rf_sleep_condition;
+volatile u32            last_connected_time;
 volatile u8             is_file_not_empty;
 volatile u8             is_sd_inserted;
 volatile u8             is_cam_failed;
@@ -208,7 +211,6 @@ volatile u8             cam_voltage;
 volatile u8             is_access_point;
 volatile u8             need_to_create_log;
 volatile u8             color_video;
-volatile u8             record_on_radio;
 volatile u8             sleep_on_radio;
 volatile u8             deinterlace_on;
 volatile u8             leds_always;
@@ -233,6 +235,7 @@ volatile u8             is_enc_started;
 volatile u8             is_cap_started;
 volatile u8             is_rec_started;         // device is recording video or audio file
 volatile u8             is_rec_on_cmd;          // device received a command to start recording
+volatile int            start_rec;
 volatile u8             is_rftx_started;
 volatile u8             is_stream_started;
 volatile u8             is_rftx_request;
@@ -351,11 +354,15 @@ typedef enum
     WRITE
 } AccessType;
 
+int get_record_state();
+void fix_record_state(int rec_on);
+
 int  readPID (const char *pidfile);
 u32  getDeviceAddr();
 void log_threads(char *msg);
 void makewaittime(struct timespec *tsp, long seconds, long nanoseconds);
 u64 uptime_ms();
+u32 uptime();
 
 typedef enum
 {

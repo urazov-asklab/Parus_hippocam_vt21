@@ -718,7 +718,7 @@ u8 ReadNetSettings()
     return SUCCESS;
 }
 
-void check_nc_files_debug()
+/*void check_nc_files_debug()
 {
     struct stat st;
 
@@ -735,6 +735,22 @@ void check_nc_files_debug()
     {
         remove(NC1_FILE);
         stop_netconnect = 0;
+    }
+}*/
+
+void check_wifi_sleep_condition(void)
+{
+    if(is_netconnect_on || (last_connected_time == 0))
+    {
+        wifi_sleep_condition = 0;
+        last_connected_time = uptime();
+    }
+    else
+    {
+        if(uptime() - last_connected_time > 5*60)
+        {
+            wifi_sleep_condition = 1;
+        }
     }
 }
 
@@ -832,7 +848,7 @@ void *netCommThrFxn(void *arg)
         }
         else
         {
-            // поднимаем режим абонента            
+            // поднимаем режим абонента
             system("/usr/local/sbin/wpa_supplicant -Dnl80211 -c/etc/wpa_supplicant.conf -iwlan0 -qq -B > /dev/null");
             usleep(2000000);
 
@@ -1053,7 +1069,7 @@ void *netCommThrFxn(void *arg)
     {
         currentCommand = gblGetCmd();
 
-        check_nc_files_debug();//
+        //check_nc_files_debug();//
 
         if((currentCommand == FINISH) || (currentCommand == SLEEP))
         {
@@ -1070,7 +1086,7 @@ void *netCommThrFxn(void *arg)
                 connect_res = check_wifi_connection();
                 if(connect_res == FAILURE)
                 {
-                    is_netconnect_on = 0;
+                    //is_netconnect_on = 0;//==
                 }
                 else
                 {
@@ -1081,6 +1097,7 @@ void *netCommThrFxn(void *arg)
                         reboot_now = 1;
                     }
                 }
+                check_wifi_sleep_condition();
             }
         }
 

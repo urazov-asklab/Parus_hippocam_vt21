@@ -29,7 +29,7 @@
 #include "resize.h"
 #include "audio.h"
 //#include "ask_rf.h"
-//#include "radiocomm.h"
+#include "radiocomm.h"
 #include "stream_buffs.h"
 #include "wis_stream.h"
 //#include "radiodatatx.h"
@@ -70,14 +70,8 @@ int get_usb_status()
 {
     u32     value;
 
-    // if(is_rf_sleep == 0)
-    // {
-        gpio_get_value(n_usb_vbus_ok, &value);
-    // }
-    // else
-    // {
-    //     return prev_usb_status;
-    // }
+    gpio_get_value(n_usb_vbus_ok, &value);
+    
     if(value == 0)
     {
         prev_usb_status = 1;
@@ -562,31 +556,6 @@ int load_settings_from_cfg_file()
                     }
                 }
                 break;
-            case to_num('r','c','r','d'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        record_on_radio = 1;
-                        debug("Attention: RECORD ON RADIO\r\n");
-                    }
-                    else if(t32 == 2)
-                    {
-                        record_on_radio = 2;
-                        debug("Attention: RECORD ON OTHER SIGNAL\r\n");
-                    }
-                    else
-                    {
-                        record_on_radio = 0;
-                        debug("Attention: RECORD ON SWITCH\r\n");
-                    }
-                }
-                break;
             case to_num('d','i','l','c'):
                 if(version == 0)
                 {
@@ -1019,11 +988,8 @@ void final_indication()
     }
     else if (is_usb_on == 0)
     {
-        if(is_rf_sleep == 1)
-        {
-        	// debug("WOR_MODE\r\n");
-        	led_blink(300000, 2);
-        }
+        // debug("WOR_MODE\r\n");
+        led_blink(300000, 2);
     }
     else
     {
@@ -1062,15 +1028,12 @@ void dump_var()
     PRINT_VAR(is_stream_failed);
     PRINT_VAR(is_memory_full);
     PRINT_VAR(is_sd_mounted);
-    PRINT_VAR(is_rf_sleep);
     PRINT_VAR(is_usb_on);
-    PRINT_VAR(record_on_radio);
 }
 
-
 // формируем команду для управления основным автоматом программы
-void change_command(Command* currentCommand, unsigned int* initMask, int* rec_flag, int* start_rec, 
-    u32* is_chrg_on_status, u32* charge_status, int* finish_app)
+void change_command(Command* currentCommand, unsigned int* initMask, int* start_rec, 
+                        u32* is_chrg_on_status, u32* charge_status, int* finish_app)
 {
     // if((is_rec_started == 1)&&(sound_only == 0)&&(video_failed == 1))
     // {
@@ -1103,7 +1066,7 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* rec_fl
     if((*(start_rec)) && !is_memory_full && !charge_low && !rf_off && !is_sdcard_off_status)
     {
     	*(start_rec)  	= 0;
-    	is_rec_request 	= 1;
+        is_rec_request 	= 1;
     }
     else
     {
@@ -1216,8 +1179,8 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* rec_fl
     }
 
     if(!is_cap_started && !is_enc_started && !is_rec_started && !is_rftx_started 
-    	/*&& is_rf_sleep*/ && !is_usb_on
-        && record_on_radio && (*(currentCommand) != FINISH)
+    	&& !is_usb_on && wifi_sleep_condition && rf_sleep_condition
+        && (*(currentCommand) != FINISH)
         /*&&(!is_rec_failed || is_memory_full)*/)
     {
 /*        dump_var();
@@ -1242,7 +1205,7 @@ int main(int argc, char *argv[])
     //pthread_t                   radioDataTXThread;
     pthread_t                   loggingThread;
     pthread_t                   indicationThread;
-    //pthread_t                   radioCommThread;
+    pthread_t                   radioCommThread;
     pthread_t                   netCommThread;
 
     // для каждой нити - массив переменных, передаваемых в неё
@@ -1257,8 +1220,7 @@ int main(int argc, char *argv[])
     StreamBuffsEnv              streamBuffsEnv;
     LoggingEnv                  loggingEnv;
     IndicationEnv               indicationEnv;
-    //RadioCommEnv                radioCommEnv;
-    //RadioDataTXEnv              radioDataTXEnv;
+    RadioCommEnv                radioCommEnv;
     NetCommEnv                  netCommEnv;
 
     pthread_attr_t              attr;
@@ -1271,7 +1233,7 @@ int main(int argc, char *argv[])
     Rendezvous_Handle           hRendezvousInitCap          = NULL;
     Rendezvous_Handle           hRendezvousInitEnc          = NULL;
 	Rendezvous_Handle           hRendezvousInitVR           = NULL;
-    Rendezvous_Handle           hRendezvousInitRFTX         = NULL;
+//    Rendezvous_Handle           hRendezvousInitRFTX         = NULL;
     Rendezvous_Handle           hRendezvousInitRC           = NULL;
     Rendezvous_Handle           hRendezvousInitLG           = NULL;
     Rendezvous_Handle           hRendezvousInitI            = NULL;
@@ -1295,15 +1257,12 @@ int main(int argc, char *argv[])
     int                         numRFTXDataThreads;
     int                         pairSync;
     void                       *ret;
-   	FILE                       *pFile;
     VideoStd_Type               captureStd                  = VideoStd_AUTO;
     pthread_mutex_t             encEngineLock;
     int                         status                      = SUCCESS;
     unsigned int                initMask                    = 0;
     int                         iters                       = 0;
-    int                         rec_flag                    = 1;
     int                         video_failed                = 0;
-    int                         start_rec                   = 0;
     int                         stop_rec_reset              = 0;
     struct timeval              start_thread_time;
     struct stat                 netfileinfo;
@@ -1335,6 +1294,9 @@ int main(int argc, char *argv[])
 
     stop_netconnect         = 1;//0xFF;
     is_netconnect_on        = 0;
+    wifi_sleep_condition    = 0;
+    rf_sleep_condition      = 0;
+    last_connected_time     = -1;
     is_cam_failed           = 0;
     rf_off                  = 0;
     cam_channel_num 		= 0;
@@ -1347,6 +1309,7 @@ int main(int argc, char *argv[])
     video_source_num        = 0;
     is_stream_request       = 0;
     is_rec_request          = 0;
+    start_rec               = 0;
     is_rftx_request         = 0;
     is_sleep_request        = 0;
     is_finish_requets       = 0;
@@ -1386,18 +1349,17 @@ int main(int argc, char *argv[])
     is_stream_failed        = 0;
     is_memory_full          = 0;
     is_sd_mounted           = 0;
-    is_rf_sleep             = 1;//0;
     last_rec_time           = 0;
     is_event_occured        = 0;
     sound_only              = 0;
     need_to_create_log      = 0;
     is_access_point         = 0;
-    record_on_radio         = 2;
     sleep_on_radio          = 1;
     is_usb_on               = 0;
     internal_error          = 0;
     is_waked_from_rf        = 0;
     cnt_restart             = 1;
+    actual_frame_width      = FRAME_CROP_WIDTH;
     frame_height            = 576;
     frames_per_hour         = 90000;
     framerate               = 25000;
@@ -1426,7 +1388,7 @@ int main(int argc, char *argv[])
     n_usb_vbus_ok           = 0;
     sd_failed               = 0;
     hdmi_active             = 0;
-    actual_frame_width      = FRAME_CROP_WIDTH;
+    
 
     rsz_height              = 0;
     rsz_width               = 0;
@@ -1582,8 +1544,7 @@ int main(int argc, char *argv[])
     Dmai_clear(resizeEnv);
     Dmai_clear(loggingEnv);
     Dmai_clear(indicationEnv);
-    //Dmai_clear(radioCommEnv);
-    //Dmai_clear(radioDataTXEnv);
+    Dmai_clear(radioCommEnv);
     Dmai_clear(netCommEnv);
 
     for(i = 0; i < MAX_BUF_GROUP_NUM; i++)
@@ -1667,10 +1628,6 @@ int main(int argc, char *argv[])
 
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
-    rec_flag = (record_on_radio == 1) ? 1 : 0;
-
-    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
     pairSync            = 2;
     numRFTXDataThreads  = 5;
 
@@ -1683,14 +1640,14 @@ int main(int argc, char *argv[])
     hRendezvousFinishRC         = Rendezvous_create(pairSync, &rzvAttrs);
     hRendezvousFinishLG   		= Rendezvous_create(pairSync, &rzvAttrs);
     hRendezvousFinishI          = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousInitRFTX         = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
+//    hRendezvousInitRFTX         = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
     hRendezvousFinishRFTX       = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
 
 
     if((hRendezvousFinishLG    == NULL) || (hRendezvousInitLG      == NULL) || 
         (hRendezvousInitRC      == NULL) || (hRendezvousFinishRC    == NULL) ||
         (hRendezvousInitI       == NULL) || (hRendezvousFinishI     == NULL) ||
-        (hRendezvousInitRFTX    == NULL) || (hRendezvousFinishRFTX  == NULL) ||
+        /*(hRendezvousInitRFTX    == NULL) ||*/ (hRendezvousFinishRFTX  == NULL) ||
         (hRendezvousFinishSTRM  == NULL) || (hRendezvousFinishNC    == NULL) )
     {
         ERR("Failed to create Rendezvous objects\r\n");
@@ -1815,129 +1772,78 @@ int main(int argc, char *argv[])
     	Rendezvous_meet(hRendezvousInitLG);
     }
 
-/*    if(record_on_radio != 0)
+    
+    // Set the radio communication thread priority 
+    schedParam.sched_priority = RADIOCOMM_THREAD_PRIORITY;
+    if (pthread_attr_setschedparam(&attr, &schedParam)) 
     {
-        // Set the radio communication thread priority 
-        schedParam.sched_priority = RADIOCOMM_THREAD_PRIORITY;
-        if (pthread_attr_setschedparam(&attr, &schedParam)) 
-        {
-            ERR("Failed to set scheduler parameters\r\n");
-            logEvent(log_REC_APL_INIT_FAILED);
-            internal_error = 1;
-        }
+        ERR("Failed to set scheduler parameters\r\n");
+        logEvent(log_REC_APL_INIT_FAILED);
+        internal_error = 1;
+    }
 
-        // Create the thread for radio communication
-        radioCommEnv.hRendezvousInit     = hRendezvousInitRC;
-        radioCommEnv.hRendezvousFinishRC = hRendezvousFinishRC;
-        radioCommEnv.hRendezvousInitRFTX = hRendezvousInitRFTX ;
-        radioCommEnv.hRendezvousStopRFTX = hRendezvousFinishRFTX;
+    // Create the thread for radio communication
+    radioCommEnv.hRendezvousInit     = hRendezvousInitRC;
+    radioCommEnv.hRendezvousFinishRC = hRendezvousFinishRC;
+    // radioCommEnv.hRendezvousInitRFTX = hRendezvousInitRFTX ;
+    // radioCommEnv.hRendezvousStopRFTX = hRendezvousFinishRFTX;
 
-        if (pthread_create(&radioCommThread, &attr, radioCommThrFxn, &radioCommEnv)) 
-        {
-            ERR("Failed to create radio communication thread\r\n");
-            logEvent(log_REC_APL_INIT_FAILED);
-            internal_error = 1;
-        }
+    if (pthread_create(&radioCommThread, &attr, radioCommThrFxn, &radioCommEnv)) 
+    {
+        ERR("Failed to create radio communication thread\r\n");
+        logEvent(log_REC_APL_INIT_FAILED);
+        internal_error = 1;
+    }
 
-        initMask |= RADIOCOMMTHREADCREATED;
+    initMask |= RADIOCOMMTHREADCREATED;
 
-        // Wait radioCommThread initialization
-        if(hRendezvousInitRC != NULL)
-        {
-        	Rendezvous_meet(hRendezvousInitRC);
-        }
-    }*/
+    // Wait radioCommThread initialization
+    if(hRendezvousInitRC != NULL)
+    {
+        Rendezvous_meet(hRendezvousInitRC);
+    }
 
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
     gblSetQuit(REC_QID | STRM_QID | RFTX_QID);
 
+    start_rec = get_record_state();
+
+    if(video_source_num == 2)
+    {
+        actual_frame_width  = 1264;
+        frame_height        = 720;
+    }
+
+    enc_width   = actual_frame_width;
+    enc_height  = frame_height;
+
+    if(video_source_num == 2)
+    {
+        captureStd  = VideoStd_720PR_30;
+    }
+    else
+    {
+        captureStd  = VideoStd_D1_PAL;
+    }
+
     while(1)
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
-        pthread_mutex_lock(&start_rec_mutex);
-
-        // если этот файл существует, то запись пользователь намеренно не останавливал, поэтому запускаем её снова
-        pFile = fopen ("/opt/start_rec" , "r" );
-        if(pFile != NULL)
-        {
-            start_rec = 1;
-            fclose(pFile);
-            pFile = NULL;
-        }
-        else
-        {
-        	start_rec = 0;
-        }
-
-        pthread_mutex_unlock(&start_rec_mutex);
-
-        if(is_rec_started != 1)
-        {
-            if(video_source_num == 2)
-            {
-                actual_frame_width  = 1264;
-                frame_height        = 720;
-            }
-
-            enc_width   = actual_frame_width;
-            enc_height  = frame_height;
-
-            if(video_source_num == 2)
-            {
-                captureStd  = VideoStd_720PR_30;
-            }
-            else
-            {
-                captureStd  = VideoStd_D1_PAL;
-            }
-        }
-
     	usleep(16700);
     	iters++;
     	log_threads("(main)start_main_iter\r\n");
-    	gettimeofday(&start_thread_time, NULL); 
-
-        ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);   	       // wdt reset
-
-        // Вкл/выкл записи по движковому переключателю
-
-        // if(is_rf_sleep == 0)
-        // {
-            gpio_get_value(sw_pwr_on, (u32 *)&is_pwr_on);
-            if(last_sw_pwr_on != is_pwr_on)
-            {
-                if(is_pwr_on == 1)
-                {
-                	pthread_mutex_lock(&start_rec_mutex);
-                    pFile = fopen("/opt/start_rec", "w");
-                    if(pFile != NULL)
-                    {
-                        fclose(pFile);
-                        pFile = NULL;
-                    }
-                    pthread_mutex_unlock(&start_rec_mutex);
-                    debug("RECORD ON (sw)\r\n");
-                }
-                else
-                {
-                	pthread_mutex_lock(&start_rec_mutex);
-                    if(remove( "/opt/start_rec" ) != 0 )
-                    {
-                        WARN("Error deleting file /opt/start_rec: %s\r\n", strerror(errno));
-                    }
-                    sync();
-                    pthread_mutex_unlock(&start_rec_mutex);
-                    debug("RECORD OFF (sw)\r\n");
-                }
-            }
-            last_sw_pwr_on = is_pwr_on;
-        // }
-        // else
-        // {
-        //     gpio_get_value(sw_pwr_on, &last_sw_pwr_on);
-        // }
+    	gettimeofday(&start_thread_time, NULL);
+        
+        // Вкл/выкл записи по движковому переключателю        
+        gpio_get_value(sw_pwr_on, (u32 *)&is_pwr_on);
+        if(last_sw_pwr_on != is_pwr_on)
+        {
+            fix_record_state(is_pwr_on);
+            start_rec = is_pwr_on;
+        }
+        last_sw_pwr_on = is_pwr_on;
 
         if(time(NULL) - start_tsens_time >= 300)  	  // check sensor every 5 min.
         {
@@ -2014,7 +1920,7 @@ int main(int argc, char *argv[])
             charge_status = 0;
         }
 
-		change_command(&currentCommand, &initMask, &rec_flag, &start_rec, 
+		change_command(&currentCommand, &initMask, (int *)&start_rec, 
             &is_chrg_on_status, &charge_status, (int *)&finish_app);
 
         log_threads("(main)analyze cmd\r\n");
@@ -2154,7 +2060,7 @@ int main(int argc, char *argv[])
                         {
                             initMask |= LOGGINGTHREADCREATED;
 
-                            // Wait radioCommThread initialization
+                            // Wait loggingThread initialization
                             if(hRendezvousInitLG != NULL)
                             {
                                 Rendezvous_meet(hRendezvousInitLG);
@@ -2705,10 +2611,7 @@ int main(int argc, char *argv[])
                     }
 
                     is_rec_started  = 1;
-                    if(record_on_radio == 0)
-                    {
-                        record_on_radio = 1;
-                    }
+                    
                     logEvent(log_REC_APL_REC_STARTED);
                     debug("STARTED RECORDING\r\n");
                 }
@@ -3338,10 +3241,10 @@ cleanup:
     {
         Rendezvous_force(hRendezvousInitVR);
     }
-    if(hRendezvousInitRFTX)
+/*    if(hRendezvousInitRFTX)
     {
         Rendezvous_force(hRendezvousInitRFTX);
-    }
+    }*/
     if(hRendezvousInitRC)
     {
         Rendezvous_force(hRendezvousInitRC);    
@@ -3367,7 +3270,7 @@ cleanup:
 	    }
     }
 
-/*    if(initMask & RADIOCOMMTHREADCREATED) 
+    if(initMask & RADIOCOMMTHREADCREATED) 
     {
         if(pthread_join(radioCommThread, &ret) == 0) 
         {
@@ -3376,7 +3279,7 @@ cleanup:
                 status = FAILURE;
             }
         }
-    }*/
+    }
 
     if(fd_wdt != -1)
     {
@@ -3451,11 +3354,11 @@ cleanup:
         hRendezvousInitVR = NULL;
     }
 
-    if(hRendezvousInitRFTX) 
+/*    if(hRendezvousInitRFTX) 
     {
         Rendezvous_delete(hRendezvousInitRFTX);
         hRendezvousInitRFTX = NULL;
-    }
+    }*/
 
     if(hRendezvousInitRC) 
     {
