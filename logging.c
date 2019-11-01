@@ -238,7 +238,7 @@ int initLogFile()
             return FAILURE;
         }
         curLogFilePos = readFPos;
-        debug("Current log file position: %x\r\n", curLogFilePos);
+        debug("Current log file position: %lx\r\n", curLogFilePos);
     }
 
     fclose(pFilePos);

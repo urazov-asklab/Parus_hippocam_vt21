@@ -115,49 +115,12 @@ int gpio_set_dir(u32 gpio, u32 out_flag)
 	return SUCCESS;
 }
 
-
-// int gpio_get_int_status()
-// {
-//     int     fd;
-//     int 	len;
-//     int 	value;
-//     char    buf[MAX_BUF];
-//     char    ch[2];
-
-//     len = snprintf(buf, sizeof(buf), "/sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/chng_mask"); 
-//  	if(len <= 0)
-// 	{
-// 		ERR("Can't open /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/chng_mask\r\n");
-// 		return FAILURE;
-// 	}
-// 	else
-//  	{
-// 	    fd  = open(buf, O_RDONLY);
-// 	    if (fd < 0) 
-// 	    {
-// 	        ERR("Can't open /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/chng_mask\r\n");
-// 	        return fd;
-// 	    }
-	 
-// 	    read(fd, &ch, 2);
-// 	    value = atoi(ch); 
-// 	    close(fd);
-// 	}
-//     return value;
-// }
-
-
 int gpio_set_value(u32 gpio, u32 value)
 {
 	int     ret_value           = 0;
 	int 	fd;
 	int 	len;
 	char 	buf[MAX_BUF];
-
-	// if((gpio == SW_PWR_ON_VAL)||(gpio == RF_PWR_ON_VAL)||(gpio == USB_ON_VAL)||(gpio == EXT_CHRG_ON_VAL))
-	// {
-	// 	chng_mask |= gpio_get_int_status();
-	// }
  
 	len = snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "/gpio%lu/value", gpio);
  
@@ -203,11 +166,6 @@ int gpio_get_value(u32 gpio, u32 *value)
 	int 	len;
 	char 	buf[MAX_BUF];
 	char 	ch;
-
-	// if((gpio == SW_PWR_ON_VAL)||(gpio == RF_PWR_ON_VAL)||(gpio == USB_ON_VAL)||(gpio == EXT_CHRG_ON_VAL))
-	// {
-	// 	chng_mask |= gpio_get_int_status();
-	// }
 
 	len = snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "/gpio%lu/value", gpio);
 
@@ -349,4 +307,40 @@ int gpio_fd_close(int fd)
 	{
 		return FAILURE;
 	}
+}
+
+#define CHANGE_MASK_PATH	"/sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/chng_mask"
+
+int get_pe_change_mask()
+{
+    int     fd;
+    int 	value;
+    char    buf[MAX_BUF];
+    char    ch[2];
+
+    snprintf(buf, sizeof(buf), CHANGE_MASK_PATH);
+ 	
+	fd  = open(buf, O_RDONLY);
+	if (fd < 0)
+	{
+		ERR("Can't open %s\r\n", CHANGE_MASK_PATH);
+		return FAILURE;
+	}
+	
+	read(fd, &ch, 2);
+	value = atoi(ch); 
+	close(fd);
+	
+    return value;
+}
+
+#define INT_MASK_PATH	"/sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask"
+
+int set_pe_interrupt_mask(u8 mask)
+{
+	char    buf[MAX_BUF];
+
+	snprintf(buf, sizeof(buf), "echo %u > %s", mask, INT_MASK_PATH);
+	
+	return system(buf);
 }

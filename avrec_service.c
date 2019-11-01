@@ -507,7 +507,7 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
 
     if(video_source_num == 2)
     {
-        gpio_set_value(change_dcam, curr_settings.cam_channel);
+        // gpio_set_value(change_dcam, curr_settings.cam_channel);
     }
 
     seconds         = time(NULL);
@@ -1141,7 +1141,7 @@ u8 AVRecParamFunc(u8 act, u8 fType, u8 *data)
                         is_config_changed_from_wlan     = 1;
                         if(video_source_num == 2)
                         {
-                            gpio_set_value(change_dcam, t8);
+                            // gpio_set_value(change_dcam, t8);
                         }
                     }
                     return SUCCESS;

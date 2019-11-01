@@ -37,6 +37,8 @@
 #ifndef _LOGGING_H
 #define _LOGGING_H
 
+#include "common.h"
+
 #include <pthread.h>
 #include <semaphore.h>
 #include <sys/time.h> 
@@ -47,8 +49,6 @@
 #include <xdc/std.h>
 
 #include <ti/sdo/dmai/Rendezvous.h>
-
-#include <common.h>
 
 // перечень событий, которые логгируются; комментарием отмечены те, что используются в этом проекте
 typedef enum

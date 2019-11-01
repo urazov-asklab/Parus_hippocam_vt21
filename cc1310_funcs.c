@@ -10,13 +10,11 @@
 #include "gpio_func.h"
 #include "ask_rf3.h"
 
-int  	rf_pwr_on;
-int  	rf_rst;
-int 	rf_oe;
-
 int cc1310_dev = -1;
 u8	ccbuf[256];
 
+int rf_rst_pin;
+int rf_oe_pin;
 
 
 int cc1310_write_reg(u8 reg, u8 val)
@@ -133,20 +131,16 @@ void cc1310_free()
 
 void cc1310_setup_connection()
 {
-    rf_pwr_on 		= RF_PWR_ON_VAL;
-    rf_rst 			= RF_RST_VAL;
-    rf_oe 			= RF_OE_VAL;
+    rf_rst_pin 			= RF_RST_VAL;
+    rf_oe_pin 			= RF_OE_VAL;
  
-    gpio_export(rf_pwr_on);
-    gpio_set_dir(rf_pwr_on, 0);
-
-    gpio_export(rf_rst);
-    gpio_set_dir(rf_rst, 1);
-    gpio_set_value(rf_rst, 0);
+    gpio_export(rf_rst_pin);
+    gpio_set_dir(rf_rst_pin, 1);
+    gpio_set_value(rf_rst_pin, 0);
     usleep(10000);
-    gpio_set_value(rf_rst, 1);
+    gpio_set_value(rf_rst_pin, 1);
 
-    gpio_export(rf_oe);
-    gpio_set_dir(rf_oe, 1);
-    gpio_set_value(rf_oe, 1);
+    gpio_export(rf_oe_pin);
+    gpio_set_dir(rf_oe_pin, 1);
+    gpio_set_value(rf_oe_pin, 1);
 }

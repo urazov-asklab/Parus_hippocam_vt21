@@ -40,7 +40,7 @@
 #include "eth_iface.h"
 #include "avrec_service.h"
 #include "net_connection.h"
-#include "aewb.h"
+//#include "aewb.h"
 
 /* The flags of initialization */
 #define AEWBTHREADCREATED           0x1
@@ -62,32 +62,20 @@
 GlobalData gbl      = GBL_DATA_INIT;
 RingBuffer evtBuf;
 
-Command prevCommand;
-
-u32 prev_usb_status = 0;;
-
 int get_usb_status()
 {
-    u32     value;
+    u32 value = 0xFFFFFFFF;
 
-    gpio_get_value(n_usb_vbus_ok, &value);
+    gpio_get_value(usb_vbus_ok_pin, &value);
     
     if(value == 0)
-    {
-        prev_usb_status = 1;
         return 1;
-    }
     else if (value == 1)
-    {
-        prev_usb_status = 0;
-        return 0;
-    }
-    else
-    {
-        return FAILURE;
-    }
+            return 0;
+        else
+            return FAILURE;
+    
 }
-
 
 void check_temp_sensor()
 {
@@ -119,36 +107,27 @@ int check_charge_status()
     // int     mins;
     // int     secs;
     int     fd;
-    int     len;
+//    int     len;
     int     time_diff;
     int     value           = 0;
     char    full_status[]   = "Full";
     char    normal_status[] = "Normal";
     char 	bat_name[] = "max77818";
 
-    len = snprintf(buf, sizeof(buf), "/sys/class/power_supply/max77818/online"); 
-    if(len <= 0)
+    snprintf(buf, sizeof(buf), "/sys/class/power_supply/max77818/online"); 
+    
+    fd  = open(buf, O_RDONLY);
+    if(fd < 0) 
     {
         ERR("Can't open /sys/class/power_supply/max77818/online\r\n");
-        return FAILURE;
+        return fd;
     }
-    else
-    {
-        fd  = open(buf, O_RDONLY);
-        if(fd < 0) 
-        {
-            ERR("Can't open /sys/class/power_supply/max77818/online\r\n");
-            return fd;
-        }
-     
-        read(fd, &ch, 1);
-
-        charger_present = (ch[0] != '0') ? 1 : 0;
+    read(fd, &ch, 1);
+    charger_present = (ch[0] != '0') ? 1 : 0;
+    close(fd);
     
-        close(fd);
-    }
 
-    /* закомментирован код для определения статуса аккумулятора с помощью fuek gauge
+    /* закомментирован код для определения статуса аккумулятора с помощью fuel gauge
        требуется отладка и тестирование*/
     // len = snprintf(buf, sizeof(buf), "/sys/class/power_supply/max77818/device/fg_state_of_charge_pct"); 
     // if(len <= 0)
@@ -218,57 +197,50 @@ int check_charge_status()
 
     value = 1;
 
-    len = snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/capacity_level", bat_name); 
-    if(len <= 0)
+    snprintf(buf, sizeof(buf), "/sys/class/power_supply/%s/capacity_level", bat_name); 
+
+    fd  = open(buf, O_RDONLY);
+    if(fd < 0) 
     {
         ERR("Can't open /sys/class/power_supply/%s/capacity_level\r\n", bat_name);
-        return FAILURE;
+        return fd;
+    }
+
+    read(fd, &ch, 9);
+
+    if(memcmp(ch, full_status, 4) == 0)
+    {
+        charger_level   = 2;
+        value           = 1;
+        cnt_ch          = 0;
+    }
+    else if (memcmp(ch, normal_status, 6) == 0)
+    {
+        charge_low      = 0;
+        charger_level   = 1;
+        value           = 1;
+        cnt_ch          = 0;
     }
     else
     {
-        fd  = open(buf, O_RDONLY);
-        if(fd < 0) 
-        {
-            ERR("Can't open /sys/class/power_supply/%s/capacity_level\r\n", bat_name);
-            return fd;
-        }
-     
-        read(fd, &ch, 9);
+        charger_level = 0;
 
-        if(memcmp(ch, full_status, 4) == 0)
+        if(charger_present == 0)
         {
-
-            charger_level   = 2;
-            value           = 1;
-            cnt_ch          = 0;
-        }
-        else if (memcmp(ch, normal_status, 6) == 0)
-        {
-            charge_low      = 0;
-            charger_level   = 1;
-            value           = 1;
-            cnt_ch          = 0;
-        }
-        else
-        {
-            charger_level = 0;
-
-            if(charger_present == 0)
+            if(cnt_ch == 0)
             {
-                if(cnt_ch == 0) 
-                {
-                    low_ch_time = time(NULL);
-                    cnt_ch = 1;
-                }
-            
-                time_diff = time(NULL) - low_ch_time;
-
-                value = (time_diff >= 600) ? 0 : 1;  // 10 min
+                low_ch_time = time(NULL);
+                cnt_ch = 1;
             }
-        } 
-     
-        close(fd);
+
+            time_diff = time(NULL) - low_ch_time;
+
+            value = (time_diff >= 600) ? 0 : 1;  // 10 min
+        }
     }
+    
+    close(fd);
+    
     if(charger_present == 1)
     {
         charge_low  = 0;
@@ -280,67 +252,57 @@ int check_charge_status()
 
 int export_general_gpios()
 {
-    change_dcam     = CHANGE_DCAM_VAL;
+    //change_dcam     = CHANGE_DCAM_VAL;
 
-    sw_pwr_on       = SW_PWR_ON_VAL;
-    usb_cs          = USB_CS_VAL;
+    sw_pwr_on_pin   = SW_PWR_ON_VAL;
+    usb_cs_pin      = USB_CS_VAL;
     sdr_temp_pin    = SDR_TEMP;
-    wakeup_en       = WAKE_UP_EN_VAL;
-    port_int        = WAKE_UP_VAL;
+    wakeup_en_pin   = WAKE_UP_EN_VAL;
+    port_int_pin    = WAKE_UP_VAL;
+    rf_pwr_on_pin	= RF_PWR_ON_VAL;
 
-    if(
-        !change_dcam ||
-        !sw_pwr_on || !usb_cs || !sdr_temp_pin)
-    {
-        ERR("Wrong GDO gpio numbers\r\n");
-        return FAILURE;
-    }
-    gpio_export(sw_pwr_on);                 // от движкового переключателя
-    gpio_set_dir(sw_pwr_on, 0);
-    sw_pwr_on_fd = gpio_fd_open(sw_pwr_on);
+    gpio_export(rf_pwr_on_pin);                 //от радиоканала
+    gpio_set_dir(rf_pwr_on_pin, 0);
 
-    gpio_export(usb_cs);                    // usb chip select
-    gpio_set_dir(usb_cs, 1);
-    gpio_set_value(usb_cs, 0);
-    usb_cs_fd = gpio_fd_open(usb_cs);
+    gpio_export(sw_pwr_on_pin);             // от движкового переключателя
+    gpio_set_dir(sw_pwr_on_pin, 0);
+    
+    gpio_export(usb_cs_pin);                // usb chip select
+    gpio_set_dir(usb_cs_pin, 1);
+    gpio_set_value(usb_cs_pin, 0);
 
     gpio_export(sdr_temp_pin);              // от датчика температуры
     gpio_set_dir(sdr_temp_pin, 0);
-    sdr_temp_pin_fd = gpio_fd_open(sdr_temp_pin);
 
-    gpio_export(change_dcam);               // к мультиплексору, переключающему на одну из 2-х цифровых камер
+    /*gpio_export(change_dcam);               // к мультиплексору, переключающему на одну из 2-х цифровых камер
     gpio_set_dir(change_dcam, 1);
-    gpio_set_value(change_dcam, 0);
-    change_dcam_fd = gpio_fd_open(change_dcam);
+    gpio_set_value(change_dcam, 0);    */
 
-    n_usb_vbus_ok = USB_ON_VAL;
-    ext_chrg_on   = EXT_CHRG_ON_VAL;
-    if(!n_usb_vbus_ok || !ext_chrg_on)
+    usb_vbus_ok_pin = USB_ON_VAL;
+    ext_chrg_on_pin   = EXT_CHRG_ON_VAL;
+    if(!usb_vbus_ok_pin || !ext_chrg_on_pin)
     {
         ERR("Wrong GDO gpio numbers\r\n");
         return FAILURE;
     }
 
-    gpio_export(n_usb_vbus_ok);              // подключено usb
-    gpio_set_dir(n_usb_vbus_ok, 0);
-    n_usb_vbus_ok_fd = gpio_fd_open(n_usb_vbus_ok);
+    gpio_export(usb_vbus_ok_pin);              // подключено usb
+    gpio_set_dir(usb_vbus_ok_pin, 0);
 
-    gpio_export(ext_chrg_on);               // подключено внешнее питание
-    gpio_set_dir(ext_chrg_on, 0);
-    ext_chrg_on_fd = gpio_fd_open(ext_chrg_on);
+    gpio_export(ext_chrg_on_pin);               // подключено внешнее питание
+    gpio_set_dir(ext_chrg_on_pin, 0);
 
     //запрет пробудки
-    gpio_export(wakeup_en);
-    gpio_set_dir(wakeup_en, 1);
-    gpio_set_value(wakeup_en, 0);
+    gpio_export(wakeup_en_pin);
+    gpio_set_dir(wakeup_en_pin, 1);
+    gpio_set_value(wakeup_en_pin, 0);
 
     //прерывание с PORT EXPANDER дубли
-    gpio_export(port_int);
-    gpio_set_dir(port_int, 0);
+    gpio_export(port_int_pin);
+    gpio_set_dir(port_int_pin, 0);
 
     return SUCCESS;
 }
-
 
 /*
 int load_settings_from_cfg_file()
@@ -1033,7 +995,7 @@ void dump_var()
 
 // формируем команду для управления основным автоматом программы
 void change_command(Command* currentCommand, unsigned int* initMask, int* start_rec, 
-                        u32* is_chrg_on_status, u32* charge_status, int* finish_app)
+                        u32  is_chrager_on, u32  charge_status) //, int* finish_app
 {
     // if((is_rec_started == 1)&&(sound_only == 0)&&(video_failed == 1))
     // {
@@ -1048,7 +1010,7 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
     //         }
     // }
 
-    if((*(is_chrg_on_status) == 0) || (*(charge_status) == 1))
+    if((is_chrager_on == 0) || (charge_status == 1))
     {
     	charge_low = 1;
     	debug("Low charge level. Will shutdown now...\r\n");
@@ -1166,17 +1128,17 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
         *(currentCommand) = STOP_WIS;
     }
 
-    // FINISH и SLEEP более приоритетные команды, поэтому находятся ближе к концу функции
-    if (/*!(*(initMask) & RADIOCOMMTHREADCREATED) && */(is_memory_full || !is_pwr_on)/*(*(finish_app) == 1))*/ 
-        && !is_rec_started && !is_usb_on /*&& is_pwr_on*/)
-    {
-    }
+    // // FINISH и SLEEP более приоритетные команды, поэтому находятся ближе к концу функции
+    // if (/*!(*(initMask) & RADIOCOMMTHREADCREATED) && */(is_memory_full || !is_pwr_on)/*(*(finish_app) == 1))*/ 
+    //     && !is_rec_started && !is_usb_on /*&& is_pwr_on*/)
+    // {
+    // }
 
-    if(cnt_restart > 11)
-    {
-        // gblSetCmd(FINISH);
-        // *(currentCommand) = FINISH;
-    }
+    // if(cnt_restart > 11)
+    // {
+    //     // gblSetCmd(FINISH);
+    //     // *(currentCommand) = FINISH;
+    // }
 
     if(!is_cap_started && !is_enc_started && !is_rec_started && !is_rftx_started 
     	&& !is_usb_on && wifi_sleep_condition && rf_sleep_condition
@@ -1189,11 +1151,68 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
     }
 }
 
+void poll_port_expander()
+{
+    u32 val = 1;
+    int change_mask = 0;
+
+    gpio_get_value(port_int_pin, &val);
+    if(!val)
+    {//port expander interrupt active
+        debug("port expander interrupt active\n");
+        change_mask = get_pe_change_mask();
+        if(change_mask < 0)
+            return;
+
+        if(change_mask == 0)
+        {
+            debug("strange: interrupt is active but change_mask is 0\n");
+            return;
+        }
+        
+        if(change_mask & PE_SW_PWR_ON)
+        {
+            debug("switch interrupt\n");
+            // Вкл/выкл записи по движковому переключателю        
+            gpio_get_value(sw_pwr_on_pin, (u32 *)&is_pwr_on);
+
+            if(last_sw_pwr_on != is_pwr_on)
+            {
+                fix_record_state(is_pwr_on);
+                start_rec = is_pwr_on;
+            }
+            last_sw_pwr_on = is_pwr_on;
+        }
+
+        if(change_mask & PE_USB_VBUS_OK)
+        {
+            debug("usb_ok interrupt\n");
+            is_usb_on = get_usb_status();
+        }
+
+        if(change_mask & PE_RF_PWR_ON)
+        {
+            u32 rf_wkup = 0;
+
+            debug("rf interrupt\n");
+            gpio_get_value(rf_pwr_on_pin, &rf_wkup);
+            if(rf_wkup)
+            {
+                sem_post(&rfSem);//wakeup radiocomm
+            }
+        }
+
+        if(change_mask & PE_BUT_PWR_ON)
+        {
+            debug("but pwr on interrupt\n");
+        }
+    }
+}
 
 int main(int argc, char *argv[])
 {
     // список нитей, которые запускаются отсюда
-    pthread_t                   aewbThread;
+//    pthread_t                   aewbThread;
     pthread_t                   aCaptureThread;
     pthread_t                   vCaptureThread;
     pthread_t                   videoThread;
@@ -1209,7 +1228,7 @@ int main(int argc, char *argv[])
     pthread_t                   netCommThread;
 
     // для каждой нити - массив переменных, передаваемых в неё
-    AEWBEnv                     aewbEnv;
+//    AEWBEnv                     aewbEnv;
     ACaptureEnv                 aCaptureEnv;
     VCaptureEnv                 vCaptureEnv;
     VideoEnv                    videoEnv;
@@ -1273,14 +1292,11 @@ int main(int argc, char *argv[])
     u32                         is_chrg_on_status           = 0;
     u32                         charge_status               = 0;
     u32                         wkup                        = 1;
-    u32                         last_sw_pwr_on              = 0;
     int                         timeout                     = 60; // сек
-    int 				        finish_app 					= 0;
-    int                         sw_pwr_on                   = SW_PWR_ON_VAL;
+//    int 				        finish_app 					= 0;
+    int                         sw_pwr_on_pin                   = SW_PWR_ON_VAL;
     time_t                      start_tsens_time;
     time_t                      check_sd_time;
-
-    prevCommand             = NO_COMMAND;
 
     samba_on                = 0;
     sd_partitions_flag      = -1;
@@ -1376,7 +1392,7 @@ int main(int argc, char *argv[])
     net_file_prev_time.tv_sec   = 0;
     net_file_prev_time.tv_nsec  = 0;
 
-
+    last_sw_pwr_on          = 0;
     is_pwr_on               = 0;
     cnt                     = 0;
     cnt_rf                  = 0;
@@ -1385,22 +1401,20 @@ int main(int argc, char *argv[])
     prev_temp_sens          = 0;
     is_usb_storage_started  = 0;
 
-    n_usb_vbus_ok           = 0;
     sd_failed               = 0;
     hdmi_active             = 0;
-    
 
     rsz_height              = 0;
     rsz_width               = 0;
 
 
-    // гасим все светодиоды, блокируем прерывания, устанавливаем ограничение по току 
-
+    // гасим все светодиоды, устанавливаем ограничение по току 
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_bat/brightness");
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_charge/brightness");
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_stat/brightness");
-    system("/bin/echo 0 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask");
     system("/bin/echo 1260 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0066/wireless_input_current_limit_mA");
+
+    set_pe_interrupt_mask(PE_USB_VBUS_OK | PE_RF_PWR_ON | PE_SW_PWR_ON | PE_CHRG_INT | PE_BUT_PWR_ON);
 
     memset((void*)&fifoLogString[0], 0, 256);
 
@@ -1477,7 +1491,7 @@ int main(int argc, char *argv[])
     }
 
     //открываем файл watchdog таймера, теперь его надо периодически сбрасывать, иначе устройство перезагрузится
-    fd_wdt = open("/dev/watchdog",O_WRONLY);
+    fd_wdt = open("/dev/watchdog", O_WRONLY);
     if(fd_wdt < 0) 
     {
         ERR("Can't open watchdog file\r\n");
@@ -1518,9 +1532,11 @@ int main(int argc, char *argv[])
 
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
+    poll_port_expander();
+
     if(conv == 0)
     {
-    	if(get_usb_status() == 1)
+    	if(is_usb_on)
 	    {
 	        logEvent(log_SYSTEM_STARTUP_USB);
 	    }
@@ -1533,7 +1549,7 @@ int main(int argc, char *argv[])
     initEventRingBuf();
     
     /* Zero out the thread environments */
-    Dmai_clear(aewbEnv);
+//    Dmai_clear(aewbEnv);
     Dmai_clear(aCaptureEnv);
     Dmai_clear(vCaptureEnv);
     Dmai_clear(streamBuffsEnv);
@@ -1809,41 +1825,34 @@ int main(int argc, char *argv[])
 
     start_rec = get_record_state();
 
-    if(video_source_num == 2)
-    {
-        actual_frame_width  = 1264;
-        frame_height        = 720;
-    }
+    // if(video_source_num == 2)
+    // {
+    //     actual_frame_width  = 1264;
+    //     frame_height        = 720;
+    // }
 
     enc_width   = actual_frame_width;
     enc_height  = frame_height;
 
-    if(video_source_num == 2)
-    {
-        captureStd  = VideoStd_720PR_30;
-    }
-    else
-    {
+    // if(video_source_num == 2)
+    // {
+    //     captureStd  = VideoStd_720PR_30;
+    // }
+    // else
+    // {
         captureStd  = VideoStd_D1_PAL;
-    }
+    // }
 
     while(1)
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
+        poll_port_expander();
+
     	usleep(16700);
     	iters++;
     	log_threads("(main)start_main_iter\r\n");
     	gettimeofday(&start_thread_time, NULL);
-        
-        // Вкл/выкл записи по движковому переключателю        
-        gpio_get_value(sw_pwr_on, (u32 *)&is_pwr_on);
-        if(last_sw_pwr_on != is_pwr_on)
-        {
-            fix_record_state(is_pwr_on);
-            start_rec = is_pwr_on;
-        }
-        last_sw_pwr_on = is_pwr_on;
 
         if(time(NULL) - start_tsens_time >= 300)  	  // check sensor every 5 min.
         {
@@ -1884,9 +1893,7 @@ int main(int argc, char *argv[])
                     sd_status       = SD_STATUS_EMPTY;
                 }
             }
-        }
-
-        is_usb_on = get_usb_status();
+        }        
 
         if(internal_error == 0)
         {
@@ -1920,8 +1927,7 @@ int main(int argc, char *argv[])
             charge_status = 0;
         }
 
-		change_command(&currentCommand, &initMask, (int *)&start_rec, 
-            &is_chrg_on_status, &charge_status, (int *)&finish_app);
+		change_command(&currentCommand, &initMask, (int *)&start_rec, is_chrg_on_status, charge_status); //, (int *)&finish_app
 
         log_threads("(main)analyze cmd\r\n");
         if(currentCommand != NO_COMMAND)
@@ -1932,7 +1938,7 @@ int main(int argc, char *argv[])
                 //if(is_sleep_request == 1)
                 {
                     debug("Start sleeping\r\n");
-                    gpio_set_value(wakeup_en, 1);//блокируем прерывание на пробудку
+                    gpio_set_value(wakeup_en_pin, 1);//блокируем прерывание на пробудку
 
                     sleep_finished = 0;
 
@@ -2008,7 +2014,7 @@ int main(int argc, char *argv[])
                     
                     system("devmem2 0x48004E00 w 0x00000000 > /dev/null");//disable TV clock to allow dss go to off mode
 
-                    gpio_set_value(usb_cs, 0);
+                    gpio_set_value(usb_cs_pin, 0);
                     usleep(16700);
 
                     sync();
@@ -2021,16 +2027,16 @@ int main(int argc, char *argv[])
                     //gpio_get_value(rf_pwr_on, &wkup);
                     //if(wkup == 0)//==
                     {
-                        gpio_get_value(sw_pwr_on, &wkup);
+                        gpio_get_value(sw_pwr_on_pin, &wkup);
                         if(wkup == last_sw_pwr_on)
                         {
-                            gpio_set_dir(wakeup_en, 0);//set input, разрешаем прерывание
+                            gpio_set_dir(wakeup_en_pin, 0);//set input, разрешаем прерывание
                             system("/bin/echo mem > /sys/power/state");
                             // вcё - ушли в сон...
 
                             // вышли из сна
-                            gpio_set_dir(wakeup_en, 1);
-                            gpio_set_value(wakeup_en, 0);
+                            gpio_set_dir(wakeup_en_pin, 1);
+                            gpio_set_value(wakeup_en_pin, 0);
                         }
                     }
                     
@@ -2182,7 +2188,7 @@ int main(int argc, char *argv[])
                 {
                     debug("Start usb storage ...\r\n");
                     sync();
-                    gpio_set_value(usb_cs, 1);
+                    gpio_set_value(usb_cs_pin, 1);
 
                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL); 
 
@@ -2365,7 +2371,7 @@ int main(int argc, char *argv[])
                             initMask |= VCAPTURETHREADCREATED;
                         }
 
-                        if(video_source_num == 2)   // digital camera
+/*                        if(video_source_num == 2)   // digital camera
                         {
                             schedParam.sched_priority = AEWB_THREAD_PRIORITY;
                             if (pthread_attr_setschedparam(&attr, &schedParam)) 
@@ -2389,7 +2395,7 @@ int main(int argc, char *argv[])
                             
                                 initMask |= AEWBTHREADCREATED;
                             }
-                        }    
+                        }*/
                     }
 #ifdef SOUND_EN
                     /* Set the audio capture thread priority */
@@ -2792,18 +2798,18 @@ int main(int argc, char *argv[])
                         initMask = initMask & ~VCAPTURETHREADCREATED;
                     }
 
-                    if ((initMask & AEWBTHREADCREATED) && (pthread_join(aewbThread, &ret) == 0))
-                    {
-                        if (ret == THREAD_FAILURE) 
-                        {
-                            ERR("Failed to join aewb thread\r\n");
-                            logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
-                            is_rec_failed       = 1;
-                            is_rftx_failed      = 1;
-                            is_stream_failed    = 1;
-                        }
-                        initMask = initMask & ~AEWBTHREADCREATED;
-                    }
+                    // if ((initMask & AEWBTHREADCREATED) && (pthread_join(aewbThread, &ret) == 0))
+                    // {
+                    //     if (ret == THREAD_FAILURE) 
+                    //     {
+                    //         ERR("Failed to join aewb thread\r\n");
+                    //         logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
+                    //         is_rec_failed       = 1;
+                    //         is_rftx_failed      = 1;
+                    //         is_stream_failed    = 1;
+                    //     }
+                    //     initMask = initMask & ~AEWBTHREADCREATED;
+                    // }
 
                     if ((initMask & ACAPTURETHREADCREATED) && (pthread_join(aCaptureThread, &ret) == 0))
                     {

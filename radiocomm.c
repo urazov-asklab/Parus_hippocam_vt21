@@ -39,7 +39,9 @@ int apply_cmd(u8 cmd, u8 param0, u8 param1)
 
     if(cmd == CTRL_ACAM_NUM)
     {
-
+        cam_channel_num = param0;
+        //need to sync with avrec_service
+        //need to restart record
         return SUCCESS;
     }
     return FAILURE;
@@ -118,14 +120,8 @@ void *radioCommThrFxn(void *arg)
 {
     //debug("RadioComm thread started\r\n");
 
-    //u8              trdFlags        = 0;
     void           *status              = THREAD_SUCCESS;
-//    Buffer_Attrs    bAttrs              = Buffer_Attrs_DEFAULT;
     RadioCommEnv   *envp                = (RadioCommEnv *) arg;    
-//    int             bufSize             = 300;
-//    u8 				dlen 				= 0;
-    u8				ccdata[256];
-    //int 			ret                 = 1;
     Command 		currentCommand;
 
 
@@ -146,8 +142,6 @@ void *radioCommThrFxn(void *arg)
     {
     	Rendezvous_meet(envp->hRendezvousInit);
     }
-
-    memset(ccdata, 0, 256);
 
     init_step   	= 0;
 

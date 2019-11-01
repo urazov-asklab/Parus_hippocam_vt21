@@ -121,7 +121,7 @@
 
 #define WAKE_UP_VAL             42//port interrupt
 #define WAKE_UP_EN_VAL          36
-#define CHANGE_DCAM_VAL         200
+//#define CHANGE_DCAM_VAL         200
 #define USB_CS_VAL              84
 // #define PWR_RF_HOLD_VAL         206         // PWR_RF_EN
 #define SW_PWR_ON_VAL           199
@@ -302,10 +302,7 @@ volatile char           wifissid[13];
 volatile char           wifipass[13];
 
 volatile int            hdmi_active;
-volatile int            n_usb_vbus_ok;
-volatile int            n_usb_vbus_ok_fd;
-volatile int            change_dcam;
-volatile int            change_dcam_fd;
+//volatile int            change_dcam;
 
 volatile time_t         set_wor_time;
 volatile time_t         start_time;   
@@ -325,19 +322,18 @@ volatile struct timespec net_file_prev_time;
 sem_t  semaphore;    // оповещение о новом событии для логгирования
 sem_t  wake_up_done; // оповещение о выходе процессора из сна
 
+volatile u32            last_sw_pwr_on;
 volatile u32            is_pwr_on;
 volatile u32            is_usb_storage_started;
 
-volatile int            wakeup_en;
-volatile int            port_int;
+volatile int            wakeup_en_pin;
+volatile int            port_int_pin;
 volatile int            sdr_temp_pin;
-volatile int            sdr_temp_pin_fd;
-volatile int            ext_chrg_on; 
-volatile int            sw_pwr_on; 
-volatile int            usb_cs;
-volatile int            ext_chrg_on_fd; 
-volatile int            sw_pwr_on_fd; 
-volatile int            usb_cs_fd;
+volatile int            ext_chrg_on_pin; 
+volatile int            sw_pwr_on_pin; 
+volatile int            usb_cs_pin;
+volatile int            usb_vbus_ok_pin;
+volatile int  	        rf_pwr_on_pin;
 
 volatile int            cnt;
 volatile int            cnt_rf;
