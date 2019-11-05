@@ -104,7 +104,7 @@ void CheckReleaseTime(PacketIO *comm)
 	gettimeofday(&cur_time, NULL); 
 	diff = ((u64)cur_time.tv_sec * (u64)US_IN_SEC + (u64)cur_time.tv_usec) - comm->LastReadTimer;
 	// debug("DIFF PERIOD: %llu us\r\n", diff);
-    if((diff < IF_RELEASE_PERIOD) && (set_wor_mode == 0))
+    if((diff < IF_RELEASE_PERIOD) /*&& (set_wor_mode == 0)*/)
     {
     	return;
     }

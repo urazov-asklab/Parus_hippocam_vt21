@@ -31,6 +31,8 @@
 #define PASS_SET                    4
 #define GOT_ALL_INFO                7
 
+u32 last_connected_time = 0;
+
 // найти в resource вхождение search и заменить его на replace
 char *str_replace(char *search, char *replace, char *resource)
 {
@@ -718,7 +720,7 @@ u8 ReadNetSettings()
     return SUCCESS;
 }
 
-/*void check_nc_files_debug()
+void check_nc_files_debug()
 {
     struct stat st;
 
@@ -736,20 +738,25 @@ u8 ReadNetSettings()
         remove(NC1_FILE);
         stop_netconnect = 0;
     }
-}*/
+}
 
 void check_wifi_sleep_condition(void)
 {
-    if(is_netconnect_on || (last_connected_time == 0))
+    //TODO:should update last_connected_time
+
+    if(!is_netconnect_on)
     {
-        wifi_sleep_condition = 0;
-        last_connected_time = uptime();
+        wifi_sleep_condition = 1;
     }
     else
     {
         if(uptime() - last_connected_time > 5*60)
         {
             wifi_sleep_condition = 1;
+        }
+        else
+        {
+            wifi_sleep_condition = 0;
         }
     }
 }
@@ -790,6 +797,8 @@ void *netCommThrFxn(void *arg)
     SettingServerEnv            settingServerEnv;
     AVRecServiceEnv             avRecServiceEnv;
     UCPServiceEnv             	ucpServiceEnv;
+
+    last_connected_time = 0;
 
     dev_addr = getDeviceAddr() - 86200000;
 
@@ -834,6 +843,7 @@ void *netCommThrFxn(void *arg)
 
     if(!network_off)
     {
+        wifi_sleep_condition = 0;
         if(is_access_point == 1)
         {
             // поднимаем точку доступа
@@ -889,6 +899,7 @@ void *netCommThrFxn(void *arg)
 
         // для правильной работы библиотеки live для видеотрансляции
         //system("/sbin/route add -host 228.67.43.91 dev wlan0");
+        last_connected_time = uptime();
     }
 
     // сеть есть - можем запустить файловый сервер
@@ -1060,16 +1071,16 @@ void *netCommThrFxn(void *arg)
 
     initMask |= UCPSERVICETHREADCREATED;
 
-
-
-    is_netconnect_on    = 1;
+    is_netconnect_on    = !network_off;
     prev_check_time     = time(NULL);
 
     while(1)
     {
         currentCommand = gblGetCmd();
 
-        //check_nc_files_debug();//
+        check_nc_files_debug();//
+
+        check_wifi_sleep_condition();
 
         if((currentCommand == FINISH) || (currentCommand == SLEEP))
         {
@@ -1097,7 +1108,6 @@ void *netCommThrFxn(void *arg)
                         reboot_now = 1;
                     }
                 }
-                check_wifi_sleep_condition();
             }
         }
 
@@ -1119,12 +1129,14 @@ void *netCommThrFxn(void *arg)
 
                 network_off         = 1;
                 is_netconnect_on    = 0;
+                wifi_sleep_condition = 1;
             }
         }
         else if(stop_netconnect == 0) // если по радиоканалу пришел сигнал ВКЛючения сети
         {
             if(network_off)
-            { 
+            {
+                wifi_sleep_condition = 0;
                 if(is_access_point == 1)
                 {
                     //ReadNetSettings();
@@ -1172,6 +1184,7 @@ void *netCommThrFxn(void *arg)
                 system("/sbin/route add -host 228.67.43.91 dev wlan0");
 
                 network_off         = 0;
+                last_connected_time = uptime();
             }
         }
 

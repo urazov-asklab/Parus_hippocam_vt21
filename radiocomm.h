@@ -13,8 +13,6 @@
 
 #include <ti/sdo/dmai/Rendezvous.h>
 
-sem_t rfSem;
-
 /* Environment passed when creating the thread */
 typedef struct RadioCommEnv 
 {

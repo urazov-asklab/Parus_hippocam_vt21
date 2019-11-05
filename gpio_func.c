@@ -316,7 +316,7 @@ int get_pe_change_mask()
     int     fd;
     int 	value;
     char    buf[MAX_BUF];
-    char    ch[2];
+    char    ch[8];
 
     snprintf(buf, sizeof(buf), CHANGE_MASK_PATH);
  	
@@ -327,8 +327,8 @@ int get_pe_change_mask()
 		return FAILURE;
 	}
 	
-	read(fd, &ch, 2);
-	value = atoi(ch); 
+	read(fd, &ch, 8);
+	value = atoi(ch);
 	close(fd);
 	
     return value;

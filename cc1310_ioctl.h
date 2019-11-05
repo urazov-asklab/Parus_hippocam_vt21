@@ -8,7 +8,6 @@
 
 struct cc1310_ioctl_p
 {
-	u8	reg;
 	u8	len;
 	u8	*buf;
 };
@@ -19,11 +18,5 @@ struct cc1310_ioctl_p
 //Write
 #define CC1310_IOCTL_WRITE			_IOW(CC1310_MAJOR, 1, int)
 
-//Read burst(with addr increment)
-#define CC1310_IOCTL_READ_BURST		_IOR(CC1310_MAJOR, 2, int)
 
-//Write burst(with addr increment)
-#define CC1310_IOCTL_WRITE_BURST 	_IOW(CC1310_MAJOR, 3, int)
-
-//Read status byte
-#define CC1310_IOCTL_GET_STATUS		_IOW(CC1310_MAJOR, 4, int)
+#define CC1310_IOCTL_GET_STATUS		_IOW(CC1310_MAJOR, 2, int)

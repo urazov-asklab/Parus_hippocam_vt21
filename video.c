@@ -164,7 +164,7 @@ void *videoThrFxn(void *arg)
     Buffer_Handle           hDeILBuf            = NULL;
     int                     bufSizeDeIL         = 0;
     int                     data_size           = 0;
-    int                     is_rftx_fail_val    = 0;
+    //int                     is_rftx_fail_val    = 0;
     int                     is_rec_fail_val     = 0;
     int                     is_stream_fail_val  = 0;
     u8                     *hDstBufPtr          = NULL;
@@ -183,7 +183,7 @@ void *videoThrFxn(void *arg)
     else if(envp->src_bgroup_num == eVRESIZER_SRC)
     {
         thread_qid          = RFTX_QID;
-        is_rftx_fail_val    = 1;
+        //is_rftx_fail_val    = 1;
     }
 
     pthread_mutex_lock(envp->encEngineLock);
@@ -414,7 +414,7 @@ void *videoThrFxn(void *arg)
             if(gblGetQuit(thread_qid))
             {
                 is_enc_finishing    = is_rec_fail_val;
-                is_rftx_finishing   = is_rftx_fail_val;
+                //is_rftx_finishing   = is_rftx_fail_val;
                 goto cleanup;
             }
 
@@ -424,7 +424,7 @@ void *videoThrFxn(void *arg)
                 if(currentCommand == STOP_RFTX)
                 {
                     is_enc_finishing    = is_rec_fail_val;
-                    is_rftx_finishing   = is_rftx_fail_val;
+                    //is_rftx_finishing   = is_rftx_fail_val;
                     cleanup(THREAD_SUCCESS, thread_qid);
                 }
             }
@@ -465,7 +465,7 @@ void *videoThrFxn(void *arg)
         	if(gblGetQuit(thread_qid))
 	        {
                 is_enc_finishing    = is_rec_fail_val;
-                is_rftx_finishing   = is_rftx_fail_val;
+                //is_rftx_finishing   = is_rftx_fail_val;
 	            goto cleanup;
 	        }
 
@@ -474,7 +474,7 @@ void *videoThrFxn(void *arg)
 	            currentCommand = gblGetCmd();
 	            if(currentCommand == STOP_RFTX)
 	            {
-                    is_rftx_finishing   = is_rftx_fail_val;
+                    //is_rftx_finishing   = is_rftx_fail_val;
 	                cleanup(THREAD_SUCCESS, thread_qid);
 	            }
 	        }
@@ -662,12 +662,12 @@ cleanup:
     if(status == THREAD_FAILURE)
     {
         is_rec_failed       = is_rec_fail_val;
-        is_rftx_failed      = is_rftx_fail_val;
+        //is_rftx_failed      = is_rftx_fail_val;
         is_stream_failed    = is_stream_fail_val;
     }
 
     is_enc_finishing    = is_rec_fail_val;
-    is_rftx_finishing   = is_rftx_fail_val;
+    //is_rftx_finishing   = is_rftx_fail_val;
     
     ReleaseTransportBufGroup(vcEncode_trd, envp->src_bgroup_num);
 

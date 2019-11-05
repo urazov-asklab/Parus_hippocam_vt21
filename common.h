@@ -130,6 +130,7 @@
 #define EXT_CHRG_ON_VAL         196
 #define RF_RST_VAL              16
 #define RF_OE_VAL               27
+#define RF_SRDY_VAL             143
 #define SDR_TEMP                115
 #define SD_CD                   78
 
@@ -138,7 +139,7 @@
 #define MAP_SIZE                4096UL
 #define MAP_MASK                (MAP_SIZE - 1)
 
-#define MAX_BUF                 64
+#define MAX_BUF                 128
 #define MAX_STATUS_LENGTH       9
 
 typedef enum
@@ -193,15 +194,15 @@ volatile u16            half_vrate;
 
 volatile u8             samba_on;
 volatile u8             stop_netconnect;
+volatile u8             wifi_sleep_condition;//показатель того что wifi не имеет активности и можно засыпать
+volatile u8             rf_sleep_condition;//показатель того что рф не имеет активности и можно засыпать
+volatile u8             radiocomm_sleeping;
+volatile u32            radiocomm_last_cmd_time;
 volatile u8             is_netconnect_on;
-volatile u8             wifi_sleep_condition;
-volatile u8             rf_sleep_condition;
-volatile u32            last_connected_time;
 volatile u8             is_file_not_empty;
 volatile u8             is_sd_inserted;
 volatile u8             is_cam_failed;
 volatile u8             charge_low;
-volatile u8             rf_off;
 volatile u8             charger_level;
 volatile u8             charger_present;
 volatile u8             cam_channel_num;
@@ -220,7 +221,6 @@ volatile u8             go_to_wor;
 volatile u8             led_on;
 volatile u8             sleep_finished;
 volatile u8             after_wake_up;
-volatile u8             set_wor_mode;
 volatile u8             analog_mic_enable;
 volatile u8             got_key_frame;
 volatile u8             is_waked_from_rf;
@@ -236,20 +236,20 @@ volatile u8             is_cap_started;
 volatile u8             is_rec_started;         // device is recording video or audio file
 volatile u8             is_rec_on_cmd;          // device received a command to start recording
 volatile int            start_rec;
-volatile u8             is_rftx_started;
+//volatile u8             is_rftx_started;
 volatile u8             is_stream_started;
-volatile u8             is_rftx_request;
+//volatile u8             is_rftx_request;
 volatile u8             is_rec_request;
 volatile u8             is_stream_request;
 volatile u8             is_sleep_request;
 volatile u8             is_finish_requets;
-volatile u8             is_rftx_finishing;
+//volatile u8             is_rftx_finishing;
 volatile u8             is_rec_finishing;
 volatile u8             is_stream_finishing;
 volatile u8             is_cap_finishing;
 volatile u8             is_enc_finishing;
 volatile u8             is_stream_failed;
-volatile u8             is_rftx_failed;
+//volatile u8             is_rftx_failed;
 volatile u8             is_rec_failed;
 volatile u8             is_memory_full;         // memory is full
 volatile u8             is_rf_sleep;            // radiochip is sleeping
@@ -271,7 +271,7 @@ volatile int            analog_mic_gain2;
 volatile int            cnt_snd;
 volatile int            cnt_tri;
 volatile int            cnt_sd;
-volatile int            rftx_stop;
+//volatile int            rftx_stop;
 volatile int            strm_error;
 //volatile int            chng_mask;
 
@@ -286,8 +286,8 @@ pthread_mutex_t         sd_mount_mutex;
 pthread_cond_t          sd_mount_cond;  // сигнал, что sd-карта примонтирована (работает в паре с мьютексом)
 pthread_mutex_t         mp4_vol_mutex;
 pthread_cond_t          mp4_vol_cond;   // сигнал, что получили SPS и PPS (работает в паре с мьютексом)
-pthread_mutex_t         rftx_mutex;
-pthread_cond_t          rftx_cond;      // сигнал, что трансляция контента по радиоканалу готова 
+//pthread_mutex_t         rftx_mutex;
+//pthread_cond_t          rftx_cond;      // сигнал, что трансляция контента по радиоканалу готова 
                                         // (работает в паре с мьютексом)
 pthread_mutex_t         socket_mutex;
 pthread_cond_t          socket_cond;    // сигнал, что закрыли сокет (работает в паре с мьютексом)
@@ -320,7 +320,7 @@ volatile struct timeval prev_st_time;
 volatile struct timespec net_file_prev_time;
 
 sem_t  semaphore;    // оповещение о новом событии для логгирования
-sem_t  wake_up_done; // оповещение о выходе процессора из сна
+sem_t  rfSem;
 
 volatile u32            last_sw_pwr_on;
 volatile u32            is_pwr_on;

@@ -15,6 +15,7 @@ u8	ccbuf[256];
 
 int rf_rst_pin;
 int rf_oe_pin;
+int rf_srdy_pin;
 
 
 int cc1310_write_reg(u8 reg, u8 val)
@@ -22,9 +23,10 @@ int cc1310_write_reg(u8 reg, u8 val)
 	int 	status;
 	struct 	cc1310_ioctl_p iop;
 
-	ccbuf[0] = val;
-	iop.reg  = reg;
+	ccbuf[0] = CC_WRITE | (reg & 0x1F);
+	ccbuf[1] = val;
 	iop.buf  = ccbuf;
+	iop.len  = 2;
 	status 	 = ioctl(cc1310_dev, CC1310_IOCTL_WRITE, (void*)&iop);
 
 	return status;
@@ -32,42 +34,58 @@ int cc1310_write_reg(u8 reg, u8 val)
 
 int cc1310_read_reg(u8 reg, u8 *val)
 {
-	int 	status;
+	int 	status, i;
+	u32 	srdy = 1;
 	struct 	cc1310_ioctl_p iop;
 
-	iop.reg = reg;
+	ccbuf[0] = CC_READ | (reg & 0x1F);
+	iop.buf  = ccbuf;
+	iop.len  = 1;
+	status 	 = ioctl(cc1310_dev, CC1310_IOCTL_WRITE, (void*)&iop);
+
+	for(i=0; i<=10; i++)
+	{
+		gpio_get_value(rf_srdy_pin, &srdy);
+		if(srdy == 0)
+			break;
+		usleep(1000);
+	}
+	if(i == 10)
+		return FAILURE;
+
 	iop.buf = ccbuf;
+	iop.len = 2;
 	status 	= ioctl(cc1310_dev, CC1310_IOCTL_READ, (void*)&iop);
-	*val 	= ccbuf[0];
+	*val 	= ccbuf[1];//ccbuf[0] is dummy byte(see cc1310 errata - spi);
 
 	return status;
 }
 
-int cc1310_write_burst(u8 reg, u8 len, u8*buf)
-{
-    int 	status;
-	struct 	cc1310_ioctl_p iop;
+// int cc1310_write_burst(u8 reg, u8 len, u8*buf)
+// {
+//     int 	status;
+// 	struct 	cc1310_ioctl_p iop;
 
-	iop.reg = reg;
-	iop.buf = buf;
-	iop.len = len;
-	status 	= ioctl(cc1310_dev, CC1310_IOCTL_WRITE_BURST, (void*)&iop);
+// 	iop.reg = reg;
+// 	iop.buf = buf;
+// 	iop.len = len;
+// 	status 	= ioctl(cc1310_dev, CC1310_IOCTL_WRITE_BURST, (void*)&iop);
 
-	return status;
-}
+// 	return status;
+// }
 
-int cc1310_read_burst(u8 reg, u8 len, u8*buf)
-{
-    int 	status;
-	struct 	cc1310_ioctl_p iop;
+// int cc1310_read_burst(u8 reg, u8 len, u8*buf)
+// {
+//     int 	status;
+// 	struct 	cc1310_ioctl_p iop;
 
-	iop.reg = reg;
-	iop.buf = buf;	
-	iop.len = len;
-	status 	= ioctl(cc1310_dev, CC1310_IOCTL_READ_BURST, (void*)&iop);
+// 	iop.reg = reg;
+// 	iop.buf = buf;	
+// 	iop.len = len;
+// 	status 	= ioctl(cc1310_dev, CC1310_IOCTL_READ_BURST, (void*)&iop);
 
-	return status;
-}
+// 	return status;
+// }
 
 int cc1310_get_status(u8*sta)
 {
@@ -79,11 +97,10 @@ int cc1310_get_status(u8*sta)
 
 	if(!status)
 	{
-		*sta = ccbuf[0];
+		*sta = ccbuf[1];//ccbuf[0] is dummy byte(see cc1310 errata - spi);
 	}
 	return status;
 }
-
 
 int	cc1310_init(char *dev)
 {
@@ -100,7 +117,6 @@ int	cc1310_init(char *dev)
 		return FAILURE;
 	}
 	
-
 	while(1)
 	{
 		ret = cc1310_get_status(&sta);
@@ -131,8 +147,9 @@ void cc1310_free()
 
 void cc1310_setup_connection()
 {
-    rf_rst_pin 			= RF_RST_VAL;
-    rf_oe_pin 			= RF_OE_VAL;
+    rf_rst_pin  = RF_RST_VAL;
+    rf_oe_pin   = RF_OE_VAL;
+	rf_srdy_pin	= RF_SRDY_VAL;
  
     gpio_export(rf_rst_pin);
     gpio_set_dir(rf_rst_pin, 1);
@@ -143,4 +160,7 @@ void cc1310_setup_connection()
     gpio_export(rf_oe_pin);
     gpio_set_dir(rf_oe_pin, 1);
     gpio_set_value(rf_oe_pin, 1);
+
+	gpio_export(rf_srdy_pin);
+	gpio_set_dir(rf_srdy_pin, 0);
 }

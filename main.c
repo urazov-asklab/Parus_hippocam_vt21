@@ -26,7 +26,7 @@
 #include "acapture.h"
 #include "vcapture.h"
 #include "packer.h"
-#include "resize.h"
+//#include "resize.h"
 #include "audio.h"
 //#include "ask_rf.h"
 #include "radiocomm.h"
@@ -40,7 +40,6 @@
 #include "eth_iface.h"
 #include "avrec_service.h"
 #include "net_connection.h"
-//#include "aewb.h"
 
 /* The flags of initialization */
 #define AEWBTHREADCREATED           0x1
@@ -58,9 +57,67 @@
 #define STREAMBUFFSTHREADCREATED    0x8000
 #define NETCOMMTHREADCREATED        0x10000
 
+// для каждой нити - массив переменных, передаваемых в неё
+//AEWBEnv                     aewbEnv;
+ACaptureEnv                 aCaptureEnv;
+VCaptureEnv                 vCaptureEnv;
+VideoEnv                    videoEnv;
+VideoEnv                    rszVideoEnv;
+AudioEnv           	        audioEnv;
+PackerEnv                   packerEnv;
+//ResizeEnv                   resizeEnv;
+StreamBuffsEnv              streamBuffsEnv;
+LoggingEnv                  loggingEnv;
+IndicationEnv               indicationEnv;
+RadioCommEnv                radioCommEnv;
+NetCommEnv                  netCommEnv;
+
+Rendezvous_Handle           hRendezvousInitCap          = NULL;
+Rendezvous_Handle           hRendezvousInitEnc          = NULL;
+Rendezvous_Handle           hRendezvousInitVR           = NULL;
+//Rendezvous_Handle           hRendezvousInitRFTX         = NULL;
+Rendezvous_Handle           hRendezvousInitRC           = NULL;
+Rendezvous_Handle           hRendezvousInitLG           = NULL;
+Rendezvous_Handle           hRendezvousInitI            = NULL;
+Rendezvous_Handle           hRendezvousFinishCap        = NULL;
+Rendezvous_Handle           hRendezvousFinishEnc        = NULL;
+Rendezvous_Handle           hRendezvousFinishVR         = NULL;
+//Rendezvous_Handle           hRendezvousFinishRFTX       = NULL;
+Rendezvous_Handle           hRendezvousFinishRC     	= NULL;
+Rendezvous_Handle           hRendezvousFinishLG         = NULL;
+Rendezvous_Handle           hRendezvousFinishI          = NULL;
+Rendezvous_Handle           hRendezvousCapture          = NULL;
+Rendezvous_Handle           hRendezvousFinishSTRM   	= NULL;
+Rendezvous_Handle           hRendezvousFinishNC         = NULL;
+
+pthread_t                   aCaptureThread;
+pthread_t                   vCaptureThread;
+pthread_t                   videoThread;
+//pthread_t                   rszVideoThread;
+pthread_t                   audioThread;
+pthread_t                   packerThread;
+//pthread_t                   resizeThread;
+pthread_t                   streamBuffsThread;
+//pthread_t                   radioDataTXThread;
+pthread_t                   loggingThread;
+pthread_t                   indicationThread;
+pthread_t                   radioCommThread;
+pthread_t                   netCommThread;
+
+pthread_mutex_t             encEngineLock;
+int                         pairSync;
+
+Rendezvous_Attrs            rzvAttrs                    = {0};
+unsigned int                initMask                    = 0;
+Command                     currentCommand;
 
 GlobalData gbl      = GBL_DATA_INIT;
 RingBuffer evtBuf;
+
+//int load_settings_from_cfg_file();
+int init_mutexes();
+int init_thread_env();
+int init_threads();
 
 int get_usb_status()
 {
@@ -303,400 +360,6 @@ int export_general_gpios()
 
     return SUCCESS;
 }
-
-/*
-int load_settings_from_cfg_file()
-{
-    if(is_sd_mounted == 0)
-    {
-        ERR("SD is not set!\r\n");
-        return FAILURE;
-    }
-    debug("Reading config...\r\n");
-
-    FILE               *pFile;
-    size_t              result;
-    char                set_systime_cmd[30];
-    long                lSize;
-    u32                 atom_size;
-    u32                 version;
-    u32                 atom_name;
-    u32                 t32;
-    u8                 *buffer;
-    u8                 *data;
-    u8                  load_over   = 0;
-    u16                 pos         = 0;
-    struct timespec     cond_time;
-    int                 err;
-
-    while(1)
-    {
-        if(is_sd_mounted == 1)
-        {
-            break;
-        }
-        else
-        {
-            makewaittime(&cond_time, 0, 500000000); // 500 ms
-            pthread_mutex_lock(&sd_mount_mutex);
-            err = pthread_cond_timedwait(&sd_mount_cond, &sd_mount_mutex, &cond_time);
-            if(err != 0) 
-            {
-                if(err == ETIMEDOUT)
-                {
-                    ERR("SD is not mounted!\r\n");
-                }
-                else if(err != ETIMEDOUT)
-                {
-                    ERR("Exit pthread_cond_timedwait with code %i\r\n", err);
-                }
-                pthread_mutex_unlock(&sd_mount_mutex);
-                return FAILURE;
-            }
-            pthread_mutex_unlock(&sd_mount_mutex);
-        }
-    }
-    pFile = fopen ("/media/card/param.cfg" , "rb+" );
-    // pFile = fopen ( "/media/mmcblk0/param.cfg" , "rb+" );
-
-    if(pFile == NULL) 
-    {
-        WARN("Cannot open configuration file\r\n");
-        return FAILURE;
-    }
-
-    // obtain file size
-    fseek(pFile , 0 , SEEK_END);
-    lSize = ftell (pFile);
-    rewind(pFile);
-
-    // allocate memory to contain the whole file
-    buffer = (u8*) malloc(sizeof(u8) * lSize);
-    if(buffer == NULL)
-    {
-        WARN("Cannot allocate memory for configuration file\r\n");
-        fclose(pFile);
-        pFile = NULL;
-        return FAILURE;
-    }
-
-    // copy the file into the buffer
-    result = fread(buffer, 1, lSize, pFile);
-    if (result != lSize) 
-    {
-        WARN("Cannot read configuration file\r\n");
-        fclose (pFile);
-        pFile = NULL;
-        free (buffer);
-        return FAILURE;
-    }
-
-    while(!load_over)
-    {
-        atom_size = get32v(&buffer[pos]);
-        if(atom_size == 0)
-        {
-            load_over = 1;
-        }
-        pos += 4;
-        atom_name = get32v(&buffer[pos]);
-
-        pos     += 4;
-        version  = get32v(&buffer[pos]);
-        pos     += 4;
-
-        switch(atom_name)
-        {
-            case to_num('s','s','t','m'): 
-                if(version == 0)
-                {
-                    if(atom_size != 0x14)
-                    {
-                        break;
-                    }
-
-                    u8 time_set = buffer[pos];
-                    if(time_set != 1)
-                    {
-                        break;
-                    }
-                    logEvent(log_WATCHES_SET);
-
-                    data = &buffer[pos + 1];
-
-                    sprintf(set_systime_cmd, "/bin/date %02x%02x%02x%02x2%01x%02x.%02x", to_bcd(data[5]), to_bcd(data[4]), 
-                        to_bcd(data[2]), to_bcd(data[1]), data[6]/100, to_bcd(data[6]), to_bcd(data[0]));
-                    debug("Attention: system date is %s\r\n", set_systime_cmd);
-
-                    buffer[pos] = 0;
-                    fseek(pFile , pos , SEEK_SET);
-                    fwrite (buffer + pos , 1, 1, pFile);
-                    system(set_systime_cmd);
-
-                    start_time      = time(NULL);
-                    set_wor_time    = time(NULL);
-
-                    logEvent(log_WATCHES_NEW_TIME);
-                }
-                break;
-            case to_num('s','n','d','o'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        sound_only = 1;
-                        debug("Attention: SOUND_ONLY\r\n");
-                    }
-                    else
-                    {
-                        sound_only = 0;
-                    }
-                }
-                break;
-            case to_num('l','o','g',' '):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        need_to_create_log = 1;
-                        debug("Attention: LOGGING ON\r\n");
-                    }
-                    else
-                    {
-                        need_to_create_log = 0;
-                        debug("Attention: LOGGING OFF\r\n");
-                    }
-                }
-                break;
-            case to_num('a','c','p','t'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        is_access_point = 1;
-                        debug("Attention: ACCESS POINT MODE\r\n");
-                    }
-                    else
-                    {
-                        is_access_point = 0;
-                        debug("Attention: WIFI CLIENT MODE\r\n");
-                    }
-                }
-                break;
-            case to_num('s','l','p','m'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        sleep_on_radio = 1;
-                        debug("Attention: SLEEP ON RADIO\r\n");
-                    }
-                    else
-                    {
-                        sleep_on_radio = 0;
-                        debug("Attention: SLEEP ON TIME\r\n");
-                    }
-                }
-                break;
-            case to_num('d','i','l','c'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        deinterlace_on = 1;
-                        debug("Attention: DEINTERLACER IS ON\r\n");
-                    }
-                    else
-                    {
-                        deinterlace_on = 0;
-                        debug("Attention: DEINTERLACER IS OFF\r\n");
-                    }
-                }
-                break;
-            case to_num('b','l','e','d'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        leds_always = 1;
-                        debug("Attention: Indication always\r\n");
-                    }
-                    else if(t32 == 2)
-                    {
-                        leds_always = 0;
-                        debug("Attention: Indication only when USB connected\r\n");
-                    }
-                }
-                break;
-            case to_num('c','o','l','r'):
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 1)
-                    {
-                        color_video = 1;
-                        debug("Attention: COLOR VIDEO FORMAT\r\n");
-                    }
-                    else if(t32 == 0)
-                    {
-                        color_video = 0;
-                        debug("Attention: BW VIDEO FORMAT\r\n");
-                    }
-                }
-                break;
-            case to_num('m','c','g','n'):       // analog microphone gain
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    t32 = t32 << 1;
-                    analog_mic_gain1 = t32;
-                    analog_mic_gain2 = t32;
-                    // set level of analog microphone gain
-                    debug("Attention: ANALOG MIC GAIN - %i dB\r\n", analog_mic_gain1);
-                }
-                break;
-            case to_num('d','m','g','n'): // digital microphone gain -  number of digits for shift from 0 to 8
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32                 = get32v(&buffer[pos]);
-                    digital_mic_gain    = t32;
-                    debug("Attention: DIGITAL MIC GAIN by %i times\r\n", digital_mic_gain);
-                }
-                break;
-            case to_num('v','b','t','r'): // video bitrate
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32                 = get32v(&buffer[pos]);
-                    video_bitrate       = t32;
-
-                    if(video_bitrate < MIN_VBITRATE)
-                    {
-                        debug("Cannot set video bitrate - %lu \r\n", video_bitrate);
-                        video_bitrate = MIN_VBITRATE;
-                    }
-                    else if(video_bitrate > MAX_VBITRATE)
-                    {
-                        debug("Cannot set video bitrate - %lu \r\n", video_bitrate);
-                        video_bitrate = MAX_VBITRATE;
-                    }
-                    debug("Attention: VIDEO BITRATE - %lu \r\n", video_bitrate);
-                }
-                break;
-            case to_num('a','u','c','h'): // audio channels number
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32                 = get32v(&buffer[pos]);
-                    audio_channels      = t32;
-
-                    if(audio_channels < 1)
-                    {
-                        debug("Cannot set number of audio channels - %lu \r\n", audio_channels);
-                        audio_channels = 1;
-                    }
-                    else if(audio_channels > 2)
-                    {
-                        debug("Cannot set number of audio channels - %lu \r\n", audio_channels);
-                        audio_channels = 2;
-                    }
-                    debug("Attention: AUDIO CHANNELS - %lu \r\n", audio_channels);
-                }
-                break;
-
-            case to_num('v','s','r','c'): // active video input
-                if(version == 0)
-                {
-                    if(atom_size != 0x10)
-                    {
-                        break;
-                    }
-                    t32 = get32v(&buffer[pos]);
-                    if(t32 == 2)
-                    {
-                        hdmi_active         = 0;
-                        video_source_num    = 2;
-                        debug("Attention: DIGITAL INPUT IS ACTIVE\r\n");
-                    }
-                    else if(t32 == 1)
-                    {
-                        hdmi_active         = 1;
-                        video_source_num    = 1;
-                        debug("Attention: HDMI INPUT IS ACTIVE\r\n");
-                    }
-                    else if(t32 == 0)
-                    {
-                        hdmi_active         = 0;
-                        video_source_num    = 0;
-                        debug("Attention: ANALOG INPUT IS ACTIVE\r\n");
-                    }
-                }
-                break;
-
-            case to_num('f','r','e','e'):  
-                fclose(pFile);
-                pFile = NULL;
-                free (buffer);
-                return SUCCESS;
-            default:   
-                break;
-        }
-        pos += (atom_size - 12);
-    }
-
-    fclose(pFile);
-    pFile = NULL;
-    free (buffer);
-    return SUCCESS;
-}*/
 
 //SD_CDn pin - GPIO78
 int check_sd_card_inserted()
@@ -959,43 +622,61 @@ void final_indication()
     }
 }
 
-void dump_var()
+void dump_var(u32 chrage_status_logged, u32 is_chrg_on_status)
 {
 #define PRINT_VAR(a)    printf(#a ": %i\n", a)
 #define PRINT_VARc(a)   printf(#a ": %s\n", a)
 #define PRINT_VARll(a)  printf(#a ": %lli\n", a)
 #define VARDUMP_FILE    "/tmp/vardump"
 
- /*   struct stat st;
+    struct stat st;
     if(stat(VARDUMP_FILE, &st) != 0)
         return;
-    remove(VARDUMP_FILE);*/
+    remove(VARDUMP_FILE);
 
     PRINT_VAR(is_video_tx_started);
     PRINT_VAR(is_video_captured);
     PRINT_VAR(is_rec_started);
     PRINT_VAR(is_rec_on_cmd);
-    PRINT_VAR(is_rftx_started);
+//    PRINT_VAR(is_rftx_started);
     PRINT_VAR(is_stream_started);
     PRINT_VAR(is_cap_started);
     PRINT_VAR(is_enc_started);
     PRINT_VAR(is_rec_finishing);
-    PRINT_VAR(is_rftx_finishing);
+    //PRINT_VAR(is_rftx_finishing);
     PRINT_VAR(is_stream_finishing);
     PRINT_VAR(is_cap_finishing);
     PRINT_VAR(is_enc_finishing);
     PRINT_VAR(is_rsz_started);
     PRINT_VAR(is_rec_failed);
-    PRINT_VAR(is_rftx_failed);
+    //PRINT_VAR(is_rftx_failed);
     PRINT_VAR(is_stream_failed);
     PRINT_VAR(is_memory_full);
     PRINT_VAR(is_sd_mounted);
     PRINT_VAR(is_usb_on);
+    PRINT_VAR(start_rec);
+    PRINT_VAR((int)currentCommand);
+    PRINT_VAR((int)is_chrg_on_status);
+    PRINT_VAR((int)chrage_status_logged);
+    PRINT_VAR(radiocomm_sleeping);
+    PRINT_VAR(rf_sleep_condition);
+    PRINT_VAR(wifi_sleep_condition);
+    PRINT_VAR(is_netconnect_on);
+}
+
+void process_rf_sleep_condition()
+{
+    if(!radiocomm_sleeping)
+    {
+        rf_sleep_condition = 0;
+        return;
+    }
+    rf_sleep_condition = (uptime() - radiocomm_last_cmd_time > 10);
 }
 
 // формируем команду для управления основным автоматом программы
-void change_command(Command* currentCommand, unsigned int* initMask, int* start_rec, 
-                        u32  is_chrager_on, u32  charge_status) //, int* finish_app
+void change_command(Command* currCommand, int* start_rec_flag, u32  is_chrager_on, u32  charge_status_fixed) 
+                                //, unsigned int* initMask, int* finish_app
 {
     // if((is_rec_started == 1)&&(sound_only == 0)&&(video_failed == 1))
     // {
@@ -1006,17 +687,17 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
     //         else
     //         {
     //             gblSetCmd(FINISH);
-    //             *(currentCommand) = FINISH;
+    //             *(currCommand) = FINISH;
     //         }
     // }
 
-    if((is_chrager_on == 0) || (charge_status == 1))
+    if((is_chrager_on == 0) || (charge_status_fixed == 1))
     {
     	charge_low = 1;
     	debug("Low charge level. Will shutdown now...\r\n");
     }
 
-    if((wis_video_hw_started || wis_audio_hw_started) && !charge_low && !rf_off && !is_stream_request)
+    if((wis_video_hw_started || wis_audio_hw_started) && !charge_low && !is_stream_request)
     {
         is_stream_request = 1;
     }
@@ -1025,9 +706,9 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
         is_stream_request = 0;
     }
 
-    if((*(start_rec)) && !is_memory_full && !charge_low && !rf_off && !is_sdcard_off_status)
+    if((*start_rec_flag) && !is_memory_full && !charge_low && !is_sdcard_off_status)
     {
-    	*(start_rec)  	= 0;
+    	//*start_rec_flag = 0; //==
         is_rec_request 	= 1;
     }
     else
@@ -1041,113 +722,102 @@ void change_command(Command* currentCommand, unsigned int* initMask, int* start_
         is_rec_request = 0; //rec_stop_cmd
     }
 
-    if((charge_low || rf_off) && (is_rec_started || is_stream_started || is_rftx_started))
+    if(charge_low && (is_rec_started || is_stream_started)) //|| is_rftx_started
     {
         is_rec_request      = 0;
-        is_rftx_request     = 0;
+//        is_rftx_request     = 0;
         is_stream_request   = 0;
     }
-    // else if ((charge_low || is_memory_full || rf_off) 
-    // 			&& !go_to_wor && !is_cap_started)
-    // {
-    // 	set_wor_mode = 1;
-    // }
 
-    if(is_stream_request && !is_stream_started && is_enc_started && !set_wor_mode
+    if(is_stream_request && !is_stream_started && is_enc_started
         && !is_stream_finishing && !is_enc_finishing && !is_cap_finishing
-        && !charge_low && !rf_off)
+        && !charge_low)
     {
         gblSetCmd(START_WIS);
-        *(currentCommand) = START_WIS;
+        *(currCommand) = START_WIS;
     }
 
-    if(is_rftx_request && !is_rftx_started && is_cap_started && !set_wor_mode
+/*    if(is_rftx_request && is_cap_started  && !is_rftx_started
         && !is_rftx_finishing && !is_enc_finishing && !is_cap_finishing 
-        && !charge_low && !rf_off)
+        && !charge_low)
     {
         gblSetCmd(START_RFTX);
-        *(currentCommand) = START_RFTX;
-    }
+        *(currCommand) = START_RFTX;
+    }*/
     
     if(is_rec_request && !is_rec_started && is_enc_started && is_sd_mounted
-        && !set_wor_mode && !is_rec_finishing && !is_enc_finishing && !is_cap_finishing
-        && !charge_low && !rf_off)
+        && !is_rec_finishing && !is_enc_finishing && !is_cap_finishing
+        && !charge_low)
     {
         gblSetCmd(START_REC);
-        *(currentCommand) = START_REC;
+        *(currCommand) = START_REC;
     }
 
-    if((is_stream_request || is_rec_request) && !is_enc_started && is_cap_started && !set_wor_mode
+    if((is_stream_request || is_rec_request) && !is_enc_started && is_cap_started
         && !is_enc_finishing && !is_cap_finishing
-        && !charge_low && !rf_off)
+        && !charge_low)
     {
         gblSetCmd(START_ENC);
-        *(currentCommand) = START_ENC;
+        *(currCommand) = START_ENC;
     }
 
-    if((is_stream_request || is_rec_request || is_rftx_request) && (is_cap_started == 0) && !set_wor_mode
-        && !is_cap_finishing && !charge_low && !rf_off)
+    if((is_stream_request || is_rec_request /*|| is_rftx_request*/) && (is_cap_started == 0)
+        && !is_cap_finishing && !charge_low)
     {
         gblSetCmd(START_CAP);
-        *(currentCommand) = START_CAP;
+        *(currCommand) = START_CAP;
     }
 
-    if(((!is_stream_request && !is_rec_request && !is_rftx_request) || is_cap_finishing)
-        && is_cap_started && !is_enc_started && !is_rec_started && !is_rftx_started 
+    if(((!is_stream_request && !is_rec_request /*&& !is_rftx_request*/) || is_cap_finishing)
+        && is_cap_started && !is_enc_started && !is_rec_started // && !is_rftx_started 
         && !is_stream_started)
     {
         gblSetCmd(STOP_CAP);
-        *(currentCommand) = STOP_CAP;
+        *(currCommand) = STOP_CAP;
     }
 
     if(((!is_stream_request && !is_rec_request) || is_enc_finishing || is_cap_finishing)
         && is_enc_started && !is_rec_started && !is_stream_started)
     {
         gblSetCmd(STOP_ENC);
-        *(currentCommand) = STOP_ENC;
+        *(currCommand) = STOP_ENC;
     }
 
     if((!is_rec_request || is_rec_finishing || is_enc_finishing || is_cap_finishing)
         && is_rec_started)
     {
         gblSetCmd(STOP_REC);
-        *(currentCommand) = STOP_REC;
+        *(currCommand) = STOP_REC;
     }
 
-    if((!is_rftx_request || is_rftx_finishing || is_enc_finishing || is_cap_finishing)
+/*    if((!is_rftx_request || is_rftx_finishing || is_enc_finishing || is_cap_finishing)
         && is_rftx_started)
     {
         gblSetCmd(STOP_RFTX);
-        *(currentCommand) = STOP_RFTX;
-    }
+        *(currCommand) = STOP_RFTX;
+    }*/
 
     if((!is_stream_request || is_stream_finishing || is_enc_finishing || is_cap_finishing)
         && is_stream_started)
     {
         gblSetCmd(STOP_WIS);
-        *(currentCommand) = STOP_WIS;
+        *(currCommand) = STOP_WIS;
     }
-
-    // // FINISH и SLEEP более приоритетные команды, поэтому находятся ближе к концу функции
-    // if (/*!(*(initMask) & RADIOCOMMTHREADCREATED) && */(is_memory_full || !is_pwr_on)/*(*(finish_app) == 1))*/ 
-    //     && !is_rec_started && !is_usb_on /*&& is_pwr_on*/)
-    // {
-    // }
 
     // if(cnt_restart > 11)
     // {
     //     // gblSetCmd(FINISH);
-    //     // *(currentCommand) = FINISH;
+    //     // *(currCommand) = FINISH;
     // }
 
-    if(!is_cap_started && !is_enc_started && !is_rec_started && !is_rftx_started 
+    if(!is_cap_started && !is_enc_started && !is_rec_started //&& !is_rftx_started
     	&& !is_usb_on && wifi_sleep_condition && rf_sleep_condition
-        && (*(currentCommand) != FINISH)
+        && (*(currCommand) != FINISH)
         /*&&(!is_rec_failed || is_memory_full)*/)
     {
 /*        dump_var();
         gblSetCmd(SLEEP);
-        *(currentCommand) = SLEEP;*/
+        *(currCommand) = SLEEP;*/
     }
 }
 
@@ -1158,11 +828,11 @@ void poll_port_expander()
 
     gpio_get_value(port_int_pin, &val);
     if(!val)
-    {//port expander interrupt active
-        debug("port expander interrupt active\n");
+    {//port expander interrupt active        
         change_mask = get_pe_change_mask();
         if(change_mask < 0)
             return;
+        debug("port expander interrupt(ch.mask: 0x%.2x)\n", change_mask);
 
         if(change_mask == 0)
         {
@@ -1186,8 +856,10 @@ void poll_port_expander()
 
         if(change_mask & PE_USB_VBUS_OK)
         {
-            debug("usb_ok interrupt\n");
-            is_usb_on = get_usb_status();
+            int stat = get_usb_status();
+            debug("usb_ok interrupt\n");            
+            if(stat != FAILURE)
+                is_usb_on = stat;
         }
 
         if(change_mask & PE_RF_PWR_ON)
@@ -1213,59 +885,10 @@ int main(int argc, char *argv[])
 {
     // список нитей, которые запускаются отсюда
 //    pthread_t                   aewbThread;
-    pthread_t                   aCaptureThread;
-    pthread_t                   vCaptureThread;
-    pthread_t                   videoThread;
- 	//pthread_t                   rszVideoThread;
-    pthread_t                   audioThread;
-   	pthread_t                   packerThread;
-    //pthread_t                   resizeThread;
-   	pthread_t                   streamBuffsThread;
-    //pthread_t                   radioDataTXThread;
-    pthread_t                   loggingThread;
-    pthread_t                   indicationThread;
-    pthread_t                   radioCommThread;
-    pthread_t                   netCommThread;
-
-    // для каждой нити - массив переменных, передаваемых в неё
-//    AEWBEnv                     aewbEnv;
-    ACaptureEnv                 aCaptureEnv;
-    VCaptureEnv                 vCaptureEnv;
-    VideoEnv                    videoEnv;
-    VideoEnv                    rszVideoEnv;
-    AudioEnv           	        audioEnv;
-    PackerEnv                   packerEnv;
-    ResizeEnv                   resizeEnv;
-    StreamBuffsEnv              streamBuffsEnv;
-    LoggingEnv                  loggingEnv;
-    IndicationEnv               indicationEnv;
-    RadioCommEnv                radioCommEnv;
-    NetCommEnv                  netCommEnv;
-
     pthread_attr_t              attr;
    	struct sched_param          schedParam;
     Codec                      *videoEncoder;
     Codec                      *audioEncoder;
-    Command                     currentCommand;
-    Rendezvous_Attrs            rzvAttrs                    = Rendezvous_Attrs_DEFAULT;
-
-    Rendezvous_Handle           hRendezvousInitCap          = NULL;
-    Rendezvous_Handle           hRendezvousInitEnc          = NULL;
-	Rendezvous_Handle           hRendezvousInitVR           = NULL;
-//    Rendezvous_Handle           hRendezvousInitRFTX         = NULL;
-    Rendezvous_Handle           hRendezvousInitRC           = NULL;
-    Rendezvous_Handle           hRendezvousInitLG           = NULL;
-    Rendezvous_Handle           hRendezvousInitI            = NULL;
-    Rendezvous_Handle           hRendezvousFinishCap        = NULL;
-    Rendezvous_Handle           hRendezvousFinishEnc        = NULL;
-    Rendezvous_Handle           hRendezvousFinishVR         = NULL;
-    Rendezvous_Handle           hRendezvousFinishRFTX       = NULL;
-    Rendezvous_Handle           hRendezvousFinishRC     	= NULL;
-    Rendezvous_Handle           hRendezvousFinishLG         = NULL;
-    Rendezvous_Handle           hRendezvousFinishI          = NULL;
-    Rendezvous_Handle           hRendezvousCapture          = NULL;
-   	Rendezvous_Handle           hRendezvousFinishSTRM   	= NULL;
-    Rendezvous_Handle           hRendezvousFinishNC         = NULL;
 
     int                         err                         = 0;
     int                         target_qid                  = 0;
@@ -1273,13 +896,10 @@ int main(int argc, char *argv[])
     u32                         conv;
    	int                         numCapThreads;
     int                         numEncThreads;
-    int                         numRFTXDataThreads;
-    int                         pairSync;
+    //int                         numRFTXDataThreads;
     void                       *ret;
-    VideoStd_Type               captureStd                  = VideoStd_AUTO;
-    pthread_mutex_t             encEngineLock;
+    VideoStd_Type               captureStd                  = VideoStd_AUTO;    
     int                         status                      = SUCCESS;
-    unsigned int                initMask                    = 0;
     int                         iters                       = 0;
     int                         video_failed                = 0;
     int                         stop_rec_reset              = 0;
@@ -1290,11 +910,9 @@ int main(int argc, char *argv[])
 
     int                         prev_sdcard_status          = 1;
     u32                         is_chrg_on_status           = 0;
-    u32                         charge_status               = 0;
-    u32                         wkup                        = 1;
+    u32                         chrage_status_logged               = 0;
     int                         timeout                     = 60; // сек
 //    int 				        finish_app 					= 0;
-    int                         sw_pwr_on_pin                   = SW_PWR_ON_VAL;
     time_t                      start_tsens_time;
     time_t                      check_sd_time;
 
@@ -1309,24 +927,22 @@ int main(int argc, char *argv[])
     sd_status               = SD_STATUS_EMPTY;
 
     stop_netconnect         = 1;//0xFF;
-    is_netconnect_on        = 0;
     wifi_sleep_condition    = 0;
     rf_sleep_condition      = 0;
-    last_connected_time     = -1;
+    radiocomm_last_cmd_time = 0;
+    radiocomm_sleeping      = 0;
     is_cam_failed           = 0;
-    rf_off                  = 0;
     cam_channel_num 		= 0;
     charger_present 		= 0;
     charger_level           = 2;
     go_to_wor  				= 0;
     sleep_finished          = 1;
     after_wake_up 			= 0;
-    set_wor_mode  			= 0;
     video_source_num        = 0;
     is_stream_request       = 0;
     is_rec_request          = 0;
     start_rec               = 0;
-    is_rftx_request         = 0;
+//    is_rftx_request         = 0;
     is_sleep_request        = 0;
     is_finish_requets       = 0;
     got_key_frame           = 0;
@@ -1350,18 +966,18 @@ int main(int argc, char *argv[])
     is_video_captured       = 0;
     is_rec_started          = 0;
     is_rec_on_cmd           = 0;
-    is_rftx_started         = 0;
+//    is_rftx_started         = 0;
     is_stream_started       = 0;
     is_cap_started          = 0;
     is_enc_started          = 0;
     is_rec_finishing        = 0;
-    is_rftx_finishing       = 0;
+    //is_rftx_finishing       = 0;
     is_stream_finishing     = 0;
     is_cap_finishing        = 0;
     is_enc_finishing        = 0;
     is_rsz_started          = 0;
     is_rec_failed           = 0;
-    is_rftx_failed          = 0;
+//    is_rftx_failed          = 0;
     is_stream_failed        = 0;
     is_memory_full          = 0;
     is_sd_mounted           = 0;
@@ -1407,6 +1023,8 @@ int main(int argc, char *argv[])
     rsz_height              = 0;
     rsz_width               = 0;
 
+    pairSync                = 2;
+
 
     // гасим все светодиоды, устанавливаем ограничение по току 
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_bat/brightness");
@@ -1427,21 +1045,8 @@ int main(int argc, char *argv[])
     gettimeofday((struct timeval *)&temp_time, NULL); 
     gettimeofday((struct timeval *)&temp_time2, NULL); 
 
-    if(pthread_mutex_init(&start_rec_mutex, NULL) != 0)
+    if(init_mutexes() != SUCCESS)
     {
-        ERR("\r\n start_rec_mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }    
-    if(pthread_mutex_init(&sd_mount_mutex, NULL) != 0)
-    {
-        ERR("\r\n sd_mount_mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }    
-    if(pthread_cond_init(&sd_mount_cond, NULL) != 0)
-    {
-        ERR("\r\n sd_mount_cond init failed\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
     }
@@ -1518,7 +1123,7 @@ int main(int argc, char *argv[])
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
     sem_init(&semaphore, 0, 0);
-    sem_init(&wake_up_done, 0, 0);
+    sem_init(&rfSem, 0, 0);
 
     gblSetCmd(NO_COMMAND);
     currentCommand  = NO_COMMAND;
@@ -1529,8 +1134,6 @@ int main(int argc, char *argv[])
     	internal_error 		= 1;
     	cnt_restart    		= conv + 1;
     }
-
-    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
     poll_port_expander();
 
@@ -1546,277 +1149,20 @@ int main(int argc, char *argv[])
     	}
     }
 
-    initEventRingBuf();
-    
-    /* Zero out the thread environments */
-//    Dmai_clear(aewbEnv);
-    Dmai_clear(aCaptureEnv);
-    Dmai_clear(vCaptureEnv);
-    Dmai_clear(streamBuffsEnv);
-    Dmai_clear(videoEnv);
-    Dmai_clear(rszVideoEnv);
-    Dmai_clear(audioEnv);
-    Dmai_clear(packerEnv);
-    Dmai_clear(resizeEnv);
-    Dmai_clear(loggingEnv);
-    Dmai_clear(indicationEnv);
-    Dmai_clear(radioCommEnv);
-    Dmai_clear(netCommEnv);
-
-    for(i = 0; i < MAX_BUF_GROUP_NUM; i++)
-    {
-        if(pthread_mutex_init(&buf_mutex[i], NULL) != 0)
-        {
-            ERR("\r\n buf_mutex[%i] init failed\r\n", i);
-            logEvent(log_REC_APL_INIT_FAILED);
-            cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-        } 
-        if(pthread_mutex_init(&rcond_mutex[i], NULL) != 0)
-        {
-            ERR("\r\n rcond_mutex[%i] init failed\r\n", i);
-            logEvent(log_REC_APL_INIT_FAILED);
-            cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-        }
-        if(pthread_mutex_init(&wcond_mutex[i], NULL) != 0)
-        {
-            ERR("\r\n wcond_mutex[%i] init failed\r\n", i);
-            logEvent(log_REC_APL_INIT_FAILED);
-            cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-        }
-        if(pthread_cond_init(&rbuf_cond[i], NULL) != 0)
-        {
-            ERR("\r\n rbuf_cond[%i] init failed\r\n", i);
-            logEvent(log_REC_APL_INIT_FAILED);
-            cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-        }
-        if(pthread_cond_init(&wbuf_cond[i], NULL) != 0)
-        {
-            ERR("\r\n wbuf_cond[%i] init failed\r\n", i);
-            logEvent(log_REC_APL_INIT_FAILED);
-            cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-        }
-    }
-
-    if(pthread_mutex_init(&mp4_vol_mutex, NULL) != 0)
-    {
-        ERR("\r\n mp4_vol_mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }    
-    if(pthread_cond_init(&mp4_vol_cond, NULL) != 0)
-    {
-        ERR("\r\n mp4_vol_cond init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    if(pthread_mutex_init(&rftx_mutex, NULL) != 0)
-    {
-        ERR("\r\n rftx_mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-    if(pthread_cond_init(&rftx_cond, NULL) != 0)
-    {
-        ERR("\r\n rftx_cond init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    /* Initialize the mutex which protects the global data */
-    if(pthread_mutex_init(&gbl.mutex, NULL) != 0)
-    {
-        ERR("\r\n gbl.mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
+    initEventRingBuf();   
+    init_thread_env();
     /* Set the priority of this whole process to max (requires root) */
     setpriority(PRIO_PROCESS, 0, -20);
-
     /* Initialize Codec Engine runtime */
     CERuntime_init();
-
     /* Initialize Davinci Multimedia Application Interface */
     Dmai_init();
-
     InitTransportBuffers();
-
-    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-    pairSync            = 2;
-    numRFTXDataThreads  = 5;
-
-    /* Create the objects which synchronizes the thread init and cleanup */
-    hRendezvousFinishNC         = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousFinishSTRM   	= Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousInitRC           = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousInitLG           = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousInitI            = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousFinishRC         = Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousFinishLG   		= Rendezvous_create(pairSync, &rzvAttrs);
-    hRendezvousFinishI          = Rendezvous_create(pairSync, &rzvAttrs);
-//    hRendezvousInitRFTX         = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
-    hRendezvousFinishRFTX       = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
-
-
-    if((hRendezvousFinishLG    == NULL) || (hRendezvousInitLG      == NULL) || 
-        (hRendezvousInitRC      == NULL) || (hRendezvousFinishRC    == NULL) ||
-        (hRendezvousInitI       == NULL) || (hRendezvousFinishI     == NULL) ||
-        /*(hRendezvousInitRFTX    == NULL) ||*/ (hRendezvousFinishRFTX  == NULL) ||
-        (hRendezvousFinishSTRM  == NULL) || (hRendezvousFinishNC    == NULL) )
+    //numRFTXDataThreads  = 5;
+    if(init_threads(&attr, &schedParam) != SUCCESS)
     {
-        ERR("Failed to create Rendezvous objects\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    if (pthread_mutex_init(&encEngineLock, NULL) != 0)
-    {
-        ERR("\r\n encEngineLock mutex init failed\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    /* Initialize the thread attributes */
-    if (pthread_attr_init(&attr)) 
-    {
-        ERR("Failed to initialize thread attrs\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    /* Force the thread to use custom scheduling attributes */
-    if (pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED)) 
-    {
-        ERR("Failed to set schedule inheritance attribute\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    /* Set the thread to be fifo real time scheduled */
-    if (pthread_attr_setschedpolicy(&attr, SCHED_FIFO)) 
-    {
-        ERR("Failed to set FIFO scheduling policy\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    // первой запускаем нить, отвечающую за поднятие сети и сетевых сервисов
-
-    /* Set the netcommunication thread priority */
-    schedParam.sched_priority = NETCOMM_THREAD_PRIORITY;
-    if (pthread_attr_setschedparam(&attr, &schedParam)) 
-    {
-        ERR("Failed to set scheduler parameters\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    netCommEnv.hRendezvousFinishNC = hRendezvousFinishNC;
-
-    // Create the thread for netcommunication
-    if (pthread_create(&netCommThread, &attr, netCommThrFxn, &netCommEnv)) 
-    {
-        ERR("Failed to create network communication thread\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    initMask |= NETCOMMTHREADCREATED;
-
-    // запускаем нить, отвечающую за индикацию с помощью 3-х светодиодов на плате
-
-    /* Set the indication thread priority */
-    schedParam.sched_priority = INDICATION_THREAD_PRIORITY;
-    if (pthread_attr_setschedparam(&attr, &schedParam)) 
-    {
-        ERR("Failed to set scheduler parameters\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    /* Create the thread for indication */
-    indicationEnv.hRendezvousInit    = hRendezvousInitI;
-    indicationEnv.hRendezvousFinishI = hRendezvousFinishI;
-
-    if (pthread_create(&indicationThread, &attr, indicationThrFxn, &indicationEnv)) 
-    {
-        ERR("Failed to create indication thread\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
-    }
-
-    initMask |= INDICATIONTHREADCREATED;
-
-    // Wait indicationThread initialization
-    if(hRendezvousInitI != NULL)
-    {
-    	Rendezvous_meet(hRendezvousInitI);
-    }
-
-    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-    // запускаем логгирование в файл /opt/device.log 
-    // (для копирования файла на носитель нужно установить переменную need_to_create_log == 1)
-
-    /* Set the logging thread priority */
-    schedParam.sched_priority = LOGGING_THREAD_PRIORITY;
-    if (pthread_attr_setschedparam(&attr, &schedParam)) 
-    {
-        ERR("Failed to set scheduler parameters\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    // Create the thread for logging
-    loggingEnv.hRendezvousInit     = hRendezvousInitLG;
-    loggingEnv.hRendezvousFinishLG = hRendezvousFinishLG;
-
-    if (pthread_create(&loggingThread, &attr, loggingThrFxn, &loggingEnv))
-    {
-        ERR("Failed to create logging thread\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    initMask |= LOGGINGTHREADCREATED;
-
-    // Wait loggingThread initialization
-    if(hRendezvousInitLG != NULL)
-    {
-    	Rendezvous_meet(hRendezvousInitLG);
-    }
-
-    
-    // Set the radio communication thread priority 
-    schedParam.sched_priority = RADIOCOMM_THREAD_PRIORITY;
-    if (pthread_attr_setschedparam(&attr, &schedParam)) 
-    {
-        ERR("Failed to set scheduler parameters\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    // Create the thread for radio communication
-    radioCommEnv.hRendezvousInit     = hRendezvousInitRC;
-    radioCommEnv.hRendezvousFinishRC = hRendezvousFinishRC;
-    // radioCommEnv.hRendezvousInitRFTX = hRendezvousInitRFTX ;
-    // radioCommEnv.hRendezvousStopRFTX = hRendezvousFinishRFTX;
-
-    if (pthread_create(&radioCommThread, &attr, radioCommThrFxn, &radioCommEnv)) 
-    {
-        ERR("Failed to create radio communication thread\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        internal_error = 1;
-    }
-
-    initMask |= RADIOCOMMTHREADCREATED;
-
-    // Wait radioCommThread initialization
-    if(hRendezvousInitRC != NULL)
-    {
-        Rendezvous_meet(hRendezvousInitRC);
     }
 
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
@@ -1847,7 +1193,10 @@ int main(int argc, char *argv[])
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
+        dump_var(chrage_status_logged, is_chrg_on_status);
+
         poll_port_expander();
+        process_rf_sleep_condition();
 
     	usleep(16700);
     	iters++;
@@ -1916,18 +1265,18 @@ int main(int argc, char *argv[])
 
 	   	if(is_chrg_on_status == 0)
 	    {
-	        if(charge_status == 0)
+	        if(chrage_status_logged == 0)
 	        {
 	            logEvent(log_SYSTEM_DEADPOWER);
-	            charge_status = 1;
+	            chrage_status_logged = 1;
 	        }
 	    }
         else
         {
-            charge_status = 0;
+            chrage_status_logged = 0;
         }
 
-		change_command(&currentCommand, &initMask, (int *)&start_rec, is_chrg_on_status, charge_status); //, (int *)&finish_app
+		change_command(&currentCommand, (int *)&start_rec, is_chrg_on_status, chrage_status_logged); //,&initMask,  (int *)&finish_app
 
         log_threads("(main)analyze cmd\r\n");
         if(currentCommand != NO_COMMAND)
@@ -1975,7 +1324,6 @@ int main(int argc, char *argv[])
     				        Rendezvous_delete(hRendezvousFinishLG);
     				        hRendezvousFinishLG = NULL;
     				    }
-
     			    }
 
                     if(initMask & NETCOMMTHREADCREATED)     // выключаем нить отвечающую за установку сети
@@ -2022,30 +1370,17 @@ int main(int argc, char *argv[])
                     log_threads("GO TO SLEEP\r\n");
                     debug("GO TO SLEEP\r\n");
                     
-                    system("/bin/echo 216 > /sys/bus/i2c/devices/2-0068/int_mask");
-
-                    //gpio_get_value(rf_pwr_on, &wkup);
-                    //if(wkup == 0)//==
-                    {
-                        gpio_get_value(sw_pwr_on_pin, &wkup);
-                        if(wkup == last_sw_pwr_on)
-                        {
-                            gpio_set_dir(wakeup_en_pin, 0);//set input, разрешаем прерывание
-                            system("/bin/echo mem > /sys/power/state");
-                            // вcё - ушли в сон...
-
-                            // вышли из сна
-                            gpio_set_dir(wakeup_en_pin, 1);
-                            gpio_set_value(wakeup_en_pin, 0);
-                        }
-                    }
-                    
+                    gpio_set_dir(wakeup_en_pin, 0);//set input, разрешаем прерывание
+                    system("/bin/echo mem > /sys/power/state");
+                    // вcё - ушли в сон...
+                    //================================SLEEP================================
+                    // вышли из сна
+                    gpio_set_dir(wakeup_en_pin, 1);
+                    gpio_set_value(wakeup_en_pin, 0);
+                                        
                     // log_threads("WAKE UP\r\n");
 
                     gblSetCmd(NO_COMMAND);
-                    sem_post(&wake_up_done);                   
-
-                    rf_off = 0;
 
                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
@@ -2169,8 +1504,6 @@ int main(int argc, char *argv[])
                     //========
                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
-                    system("/bin/echo 0 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask");
-
                     start_time      = time(NULL);
                     set_wor_time    = time(NULL);
                     sleep_finished  = 1;
@@ -2182,7 +1515,7 @@ int main(int argc, char *argv[])
                     WARN("Waiting for is_sleep_request\r\n");
                 }*/
             }
-            else if(currentCommand == START_USB_STORAGE)
+            /*else if(currentCommand == START_USB_STORAGE)
             {
                 if((is_usb_storage_started == 0) && (is_sd_mounted))
                 {
@@ -2284,7 +1617,7 @@ int main(int argc, char *argv[])
                     //  finish_app = 1;
                     // }
                 }
-            }
+            }*/
 
             else if(currentCommand == START_CAP)
             {
@@ -2322,10 +1655,10 @@ int main(int argc, char *argv[])
                         target_qid      = REC_QID;
                         is_rec_on_cmd   = 1;
                     }
-                    else if(is_rftx_request)
-                    {
-                        target_qid = RFTX_QID;
-                    }
+                    // else if(is_rftx_request)
+                    // {
+                    //     target_qid = RFTX_QID;
+                    // }
                     
                     gblResetQuit(target_qid);          
 
@@ -2792,7 +2125,7 @@ int main(int argc, char *argv[])
                             ERR("Failed to join video capture thread\r\n");
                             logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
                             is_rec_failed       = 1;
-                            is_rftx_failed      = 1;
+                            //is_rftx_failed      = 1;
                             is_stream_failed    = 1;
                         }
                         initMask = initMask & ~VCAPTURETHREADCREATED;
@@ -2818,7 +2151,7 @@ int main(int argc, char *argv[])
                             ERR("Failed to join audio capture thread\r\n");
                             logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
                             is_rec_failed       = 1;
-                            is_rftx_failed      = 1;
+                            //is_rftx_failed      = 1;
                             is_stream_failed    = 1;
                         }
                         initMask = initMask & ~ACAPTURETHREADCREATED;
@@ -2871,7 +2204,7 @@ int main(int argc, char *argv[])
 // 			    		 status = RESTART;
 // 	                // }
 
-// 	                // if ((is_chrg_on_status == 0) || (charge_status == 1))
+// 	                // if ((is_chrg_on_status == 0) || (chrage_status_logged == 1))
 // 	                // {
 // 	                // 	status = SUCCESS;
 // 	                // }
@@ -3276,8 +2609,9 @@ cleanup:
 	    }
     }
 
-    if(initMask & RADIOCOMMTHREADCREATED) 
+    if(initMask & RADIOCOMMTHREADCREATED)
     {
+        sem_wait(&rfSem);
         if(pthread_join(radioCommThread, &ret) == 0) 
         {
             if(ret == THREAD_FAILURE) 
@@ -3418,11 +2752,11 @@ cleanup:
         hRendezvousFinishSTRM = NULL;
     }
 
-    if(hRendezvousFinishRFTX) 
-    {
-        Rendezvous_delete(hRendezvousFinishRFTX);
-        hRendezvousFinishRFTX = NULL;
-    }
+    // if(hRendezvousFinishRFTX) 
+    // {
+    //     Rendezvous_delete(hRendezvousFinishRFTX);
+    //     hRendezvousFinishRFTX = NULL;
+    // }
 
     if(fd_wdt != -1)
     {
@@ -3448,8 +2782,8 @@ cleanup:
     pthread_cond_destroy(&sd_mount_cond);
     pthread_mutex_destroy(&mp4_vol_mutex);
     pthread_cond_destroy(&mp4_vol_cond);
-    pthread_mutex_destroy(&rftx_mutex);
-    pthread_cond_destroy(&rftx_cond);
+//    pthread_mutex_destroy(&rftx_mutex);
+//    pthread_cond_destroy(&rftx_cond);
     pthread_mutex_destroy(&start_rec_mutex);
 
     for(i = 0; i < MAX_BUF_GROUP_NUM; i++)
@@ -3471,7 +2805,6 @@ cleanup:
 
     clearEventRingBuf();
     sem_destroy(&semaphore);
-    sem_destroy(&wake_up_done);
     if(fd_wdt != -1)
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
@@ -3513,7 +2846,7 @@ cleanup:
 
     if(status == SUCCESS)
     {
-        system("/bin/echo 240 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask");
+        //system("/bin/echo 240 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask");
 
         final_indication();
         // записываем всё на диск, иначе файловая система находится в режиме с отложенной записью 
@@ -3539,3 +2872,661 @@ cleanup:
 
     exit(status);
 }
+
+int     init_threads(pthread_attr_t *th_attr, struct sched_param *th_schedParam)
+{
+    /* Create the objects which synchronizes the thread init and cleanup */
+    hRendezvousFinishNC         = Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousFinishSTRM   	= Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousInitRC           = Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousInitLG           = Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousInitI            = Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousFinishRC         = Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousFinishLG   		= Rendezvous_create(pairSync, &rzvAttrs);
+    hRendezvousFinishI          = Rendezvous_create(pairSync, &rzvAttrs);
+//    hRendezvousInitRFTX         = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
+//    hRendezvousFinishRFTX       = Rendezvous_create(numRFTXDataThreads, &rzvAttrs);
+
+    if((hRendezvousFinishLG    == NULL) || (hRendezvousInitLG      == NULL) || 
+        (hRendezvousInitRC      == NULL) || (hRendezvousFinishRC    == NULL) ||
+        (hRendezvousInitI       == NULL) || (hRendezvousFinishI     == NULL) ||
+        /*(hRendezvousInitRFTX    == NULL) || (hRendezvousFinishRFTX  == NULL) || */
+        (hRendezvousFinishSTRM  == NULL) || (hRendezvousFinishNC    == NULL) )
+    {
+        ERR("Failed to create Rendezvous objects\r\n");
+        return FAILURE;
+    }
+
+    /* Initialize the thread attributes */
+    if (pthread_attr_init(th_attr)) 
+    {
+        ERR("Failed to initialize thread attrs\r\n");
+        return FAILURE;
+    }
+
+    /* Force the thread to use custom scheduling attributes */
+    if (pthread_attr_setinheritsched(th_attr, PTHREAD_EXPLICIT_SCHED)) 
+    {
+        ERR("Failed to set schedule inheritance attribute\r\n");
+        return FAILURE;
+    }
+
+    /* Set the thread to be fifo real time scheduled */
+    if (pthread_attr_setschedpolicy(th_attr, SCHED_FIFO)) 
+    {
+        ERR("Failed to set FIFO scheduling policy\r\n");
+        return FAILURE;
+    }
+
+    // первой запускаем нить, отвечающую за поднятие сети и сетевых сервисов
+
+    /* Set the netcommunication thread priority */
+    (*th_schedParam).sched_priority = NETCOMM_THREAD_PRIORITY;
+    if (pthread_attr_setschedparam(th_attr, th_schedParam)) 
+    {
+        ERR("Failed to set scheduler parameters\r\n");
+        internal_error = 1;
+    }
+
+    netCommEnv.hRendezvousFinishNC = hRendezvousFinishNC;
+
+    // Create the thread for netcommunication
+    if (pthread_create(&netCommThread, th_attr, netCommThrFxn, &netCommEnv)) 
+    {
+        ERR("Failed to create network communication thread\r\n");
+        internal_error = 1;
+    }
+
+    initMask |= NETCOMMTHREADCREATED;
+
+    // запускаем нить, отвечающую за индикацию с помощью 3-х светодиодов на плате
+
+    /* Set the indication thread priority */
+    (*th_schedParam).sched_priority = INDICATION_THREAD_PRIORITY;
+    if (pthread_attr_setschedparam(th_attr, th_schedParam)) 
+    {
+        ERR("Failed to set scheduler parameters\r\n");
+        return FAILURE;
+    }
+
+    /* Create the thread for indication */
+    indicationEnv.hRendezvousInit    = hRendezvousInitI;
+    indicationEnv.hRendezvousFinishI = hRendezvousFinishI;
+
+    if (pthread_create(&indicationThread, th_attr, indicationThrFxn, &indicationEnv)) 
+    {
+        ERR("Failed to create indication thread\r\n");
+        return FAILURE;
+    }
+
+    initMask |= INDICATIONTHREADCREATED;
+
+    // Wait indicationThread initialization
+    if(hRendezvousInitI != NULL)
+    {
+    	Rendezvous_meet(hRendezvousInitI);
+    }
+
+    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+
+    // запускаем логгирование в файл /opt/device.log 
+    // (для копирования файла на носитель нужно установить переменную need_to_create_log == 1)
+
+    /* Set the logging thread priority */
+    (*th_schedParam).sched_priority = LOGGING_THREAD_PRIORITY;
+    if (pthread_attr_setschedparam(th_attr, th_schedParam)) 
+    {
+        ERR("Failed to set scheduler parameters\r\n");
+        internal_error = 1;
+    }
+
+    // Create the thread for logging
+    loggingEnv.hRendezvousInit     = hRendezvousInitLG;
+    loggingEnv.hRendezvousFinishLG = hRendezvousFinishLG;
+
+    if (pthread_create(&loggingThread, th_attr, loggingThrFxn, &loggingEnv))
+    {
+        ERR("Failed to create logging thread\r\n");
+        internal_error = 1;
+    }
+
+    initMask |= LOGGINGTHREADCREATED;
+
+    // Wait loggingThread initialization
+    if(hRendezvousInitLG != NULL)
+    {
+    	Rendezvous_meet(hRendezvousInitLG);
+    }
+
+    // Set the radio communication thread priority 
+    (*th_schedParam).sched_priority = RADIOCOMM_THREAD_PRIORITY;
+    if (pthread_attr_setschedparam(th_attr, th_schedParam)) 
+    {
+        ERR("Failed to set scheduler parameters\r\n");
+        internal_error = 1;
+    }
+
+    // Create the thread for radio communication
+    radioCommEnv.hRendezvousInit     = hRendezvousInitRC;
+    radioCommEnv.hRendezvousFinishRC = hRendezvousFinishRC;
+    // radioCommEnv.hRendezvousInitRFTX = hRendezvousInitRFTX ;
+    // radioCommEnv.hRendezvousStopRFTX = hRendezvousFinishRFTX;
+
+    if (pthread_create(&radioCommThread, th_attr, radioCommThrFxn, &radioCommEnv)) 
+    {
+        ERR("Failed to create radio communication thread\r\n");
+        internal_error = 1;
+    }
+
+    initMask |= RADIOCOMMTHREADCREATED;
+
+    // Wait radioCommThread initialization
+    if(hRendezvousInitRC != NULL)
+    {
+        Rendezvous_meet(hRendezvousInitRC);
+    }
+
+    return SUCCESS;
+}
+
+int     init_thread_env()
+{
+        /* Zero out the thread environments */
+//    Dmai_clear(aewbEnv);
+    Dmai_clear(aCaptureEnv);
+    Dmai_clear(vCaptureEnv);
+    Dmai_clear(streamBuffsEnv);
+    Dmai_clear(videoEnv);
+    Dmai_clear(rszVideoEnv);
+    Dmai_clear(audioEnv);
+    Dmai_clear(packerEnv);
+    //Dmai_clear(resizeEnv);
+    Dmai_clear(loggingEnv);
+    Dmai_clear(indicationEnv);
+    Dmai_clear(radioCommEnv);
+    Dmai_clear(netCommEnv);
+
+    return SUCCESS;
+}
+
+int     init_mutexes()
+{
+    int i;
+
+    if(pthread_mutex_init(&start_rec_mutex, NULL) != 0)
+    {
+        ERR("\r\n start_rec_mutex init failed\r\n");
+        return FAILURE;
+    }    
+    if(pthread_mutex_init(&sd_mount_mutex, NULL) != 0)
+    {
+        ERR("\r\n sd_mount_mutex init failed\r\n");
+        return FAILURE;
+    }    
+    if(pthread_cond_init(&sd_mount_cond, NULL) != 0)
+    {
+        ERR("\r\n sd_mount_cond init failed\r\n");
+        return FAILURE;
+    }
+
+    for(i = 0; i < MAX_BUF_GROUP_NUM; i++)
+    {
+        if(pthread_mutex_init(&buf_mutex[i], NULL) != 0)
+        {
+            ERR("\r\n buf_mutex[%i] init failed\r\n", i);
+            return FAILURE;
+        } 
+        if(pthread_mutex_init(&rcond_mutex[i], NULL) != 0)
+        {
+            ERR("\r\n rcond_mutex[%i] init failed\r\n", i);
+            return FAILURE;
+        }
+        if(pthread_mutex_init(&wcond_mutex[i], NULL) != 0)
+        {
+            ERR("\r\n wcond_mutex[%i] init failed\r\n", i);
+            return FAILURE;
+        }
+        if(pthread_cond_init(&rbuf_cond[i], NULL) != 0)
+        {
+            ERR("\r\n rbuf_cond[%i] init failed\r\n", i);
+            return FAILURE;
+        }
+        if(pthread_cond_init(&wbuf_cond[i], NULL) != 0)
+        {
+            ERR("\r\n wbuf_cond[%i] init failed\r\n", i);
+            return FAILURE;
+        }
+    }
+
+    if(pthread_mutex_init(&mp4_vol_mutex, NULL) != 0)
+    {
+        ERR("\r\n mp4_vol_mutex init failed\r\n");
+        return FAILURE;
+    }    
+    if(pthread_cond_init(&mp4_vol_cond, NULL) != 0)
+    {
+        ERR("\r\n mp4_vol_cond init failed\r\n");
+        return FAILURE;
+    }
+
+    // if(pthread_mutex_init(&rftx_mutex, NULL) != 0)
+    // {
+    //     ERR("\r\n rftx_mutex init failed\r\n");
+    //     return FAILURE;
+    // }
+    // if(pthread_cond_init(&rftx_cond, NULL) != 0)
+    // {
+    //     ERR("\r\n rftx_cond init failed\r\n");
+    //     return FAILURE;
+    // }
+
+    /* Initialize the mutex which protects the global data */
+    if(pthread_mutex_init(&gbl.mutex, NULL) != 0)
+    {
+        ERR("\r\n gbl.mutex init failed\r\n");
+        return FAILURE;
+    }
+
+    if (pthread_mutex_init(&encEngineLock, NULL) != 0)
+    {
+        ERR("\r\n encEngineLock mutex init failed\r\n");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+/*
+int load_settings_from_cfg_file()
+{
+    if(is_sd_mounted == 0)
+    {
+        ERR("SD is not set!\r\n");
+        return FAILURE;
+    }
+    debug("Reading config...\r\n");
+
+    FILE               *pFile;
+    size_t              result;
+    char                set_systime_cmd[30];
+    long                lSize;
+    u32                 atom_size;
+    u32                 version;
+    u32                 atom_name;
+    u32                 t32;
+    u8                 *buffer;
+    u8                 *data;
+    u8                  load_over   = 0;
+    u16                 pos         = 0;
+    struct timespec     cond_time;
+    int                 err;
+
+    while(1)
+    {
+        if(is_sd_mounted == 1)
+        {
+            break;
+        }
+        else
+        {
+            makewaittime(&cond_time, 0, 500000000); // 500 ms
+            pthread_mutex_lock(&sd_mount_mutex);
+            err = pthread_cond_timedwait(&sd_mount_cond, &sd_mount_mutex, &cond_time);
+            if(err != 0) 
+            {
+                if(err == ETIMEDOUT)
+                {
+                    ERR("SD is not mounted!\r\n");
+                }
+                else if(err != ETIMEDOUT)
+                {
+                    ERR("Exit pthread_cond_timedwait with code %i\r\n", err);
+                }
+                pthread_mutex_unlock(&sd_mount_mutex);
+                return FAILURE;
+            }
+            pthread_mutex_unlock(&sd_mount_mutex);
+        }
+    }
+    pFile = fopen ("/media/card/param.cfg" , "rb+" );
+    // pFile = fopen ( "/media/mmcblk0/param.cfg" , "rb+" );
+
+    if(pFile == NULL) 
+    {
+        WARN("Cannot open configuration file\r\n");
+        return FAILURE;
+    }
+
+    // obtain file size
+    fseek(pFile , 0 , SEEK_END);
+    lSize = ftell (pFile);
+    rewind(pFile);
+
+    // allocate memory to contain the whole file
+    buffer = (u8*) malloc(sizeof(u8) * lSize);
+    if(buffer == NULL)
+    {
+        WARN("Cannot allocate memory for configuration file\r\n");
+        fclose(pFile);
+        pFile = NULL;
+        return FAILURE;
+    }
+
+    // copy the file into the buffer
+    result = fread(buffer, 1, lSize, pFile);
+    if (result != lSize) 
+    {
+        WARN("Cannot read configuration file\r\n");
+        fclose (pFile);
+        pFile = NULL;
+        free (buffer);
+        return FAILURE;
+    }
+
+    while(!load_over)
+    {
+        atom_size = get32v(&buffer[pos]);
+        if(atom_size == 0)
+        {
+            load_over = 1;
+        }
+        pos += 4;
+        atom_name = get32v(&buffer[pos]);
+
+        pos     += 4;
+        version  = get32v(&buffer[pos]);
+        pos     += 4;
+
+        switch(atom_name)
+        {
+            case to_num('s','s','t','m'): 
+                if(version == 0)
+                {
+                    if(atom_size != 0x14)
+                    {
+                        break;
+                    }
+
+                    u8 time_set = buffer[pos];
+                    if(time_set != 1)
+                    {
+                        break;
+                    }
+                    logEvent(log_WATCHES_SET);
+
+                    data = &buffer[pos + 1];
+
+                    sprintf(set_systime_cmd, "/bin/date %02x%02x%02x%02x2%01x%02x.%02x", to_bcd(data[5]), to_bcd(data[4]), 
+                        to_bcd(data[2]), to_bcd(data[1]), data[6]/100, to_bcd(data[6]), to_bcd(data[0]));
+                    debug("Attention: system date is %s\r\n", set_systime_cmd);
+
+                    buffer[pos] = 0;
+                    fseek(pFile , pos , SEEK_SET);
+                    fwrite (buffer + pos , 1, 1, pFile);
+                    system(set_systime_cmd);
+
+                    start_time      = time(NULL);
+                    set_wor_time    = time(NULL);
+
+                    logEvent(log_WATCHES_NEW_TIME);
+                }
+                break;
+            case to_num('s','n','d','o'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        sound_only = 1;
+                        debug("Attention: SOUND_ONLY\r\n");
+                    }
+                    else
+                    {
+                        sound_only = 0;
+                    }
+                }
+                break;
+            case to_num('l','o','g',' '):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        need_to_create_log = 1;
+                        debug("Attention: LOGGING ON\r\n");
+                    }
+                    else
+                    {
+                        need_to_create_log = 0;
+                        debug("Attention: LOGGING OFF\r\n");
+                    }
+                }
+                break;
+            case to_num('a','c','p','t'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        is_access_point = 1;
+                        debug("Attention: ACCESS POINT MODE\r\n");
+                    }
+                    else
+                    {
+                        is_access_point = 0;
+                        debug("Attention: WIFI CLIENT MODE\r\n");
+                    }
+                }
+                break;
+            case to_num('s','l','p','m'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        sleep_on_radio = 1;
+                        debug("Attention: SLEEP ON RADIO\r\n");
+                    }
+                    else
+                    {
+                        sleep_on_radio = 0;
+                        debug("Attention: SLEEP ON TIME\r\n");
+                    }
+                }
+                break;
+            case to_num('d','i','l','c'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        deinterlace_on = 1;
+                        debug("Attention: DEINTERLACER IS ON\r\n");
+                    }
+                    else
+                    {
+                        deinterlace_on = 0;
+                        debug("Attention: DEINTERLACER IS OFF\r\n");
+                    }
+                }
+                break;
+            case to_num('b','l','e','d'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        leds_always = 1;
+                        debug("Attention: Indication always\r\n");
+                    }
+                    else if(t32 == 2)
+                    {
+                        leds_always = 0;
+                        debug("Attention: Indication only when USB connected\r\n");
+                    }
+                }
+                break;
+            case to_num('c','o','l','r'):
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 1)
+                    {
+                        color_video = 1;
+                        debug("Attention: COLOR VIDEO FORMAT\r\n");
+                    }
+                    else if(t32 == 0)
+                    {
+                        color_video = 0;
+                        debug("Attention: BW VIDEO FORMAT\r\n");
+                    }
+                }
+                break;
+            case to_num('m','c','g','n'):       // analog microphone gain
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    t32 = t32 << 1;
+                    analog_mic_gain1 = t32;
+                    analog_mic_gain2 = t32;
+                    // set level of analog microphone gain
+                    debug("Attention: ANALOG MIC GAIN - %i dB\r\n", analog_mic_gain1);
+                }
+                break;
+            case to_num('d','m','g','n'): // digital microphone gain -  number of digits for shift from 0 to 8
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32                 = get32v(&buffer[pos]);
+                    digital_mic_gain    = t32;
+                    debug("Attention: DIGITAL MIC GAIN by %i times\r\n", digital_mic_gain);
+                }
+                break;
+            case to_num('v','b','t','r'): // video bitrate
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32                 = get32v(&buffer[pos]);
+                    video_bitrate       = t32;
+
+                    if(video_bitrate < MIN_VBITRATE)
+                    {
+                        debug("Cannot set video bitrate - %lu \r\n", video_bitrate);
+                        video_bitrate = MIN_VBITRATE;
+                    }
+                    else if(video_bitrate > MAX_VBITRATE)
+                    {
+                        debug("Cannot set video bitrate - %lu \r\n", video_bitrate);
+                        video_bitrate = MAX_VBITRATE;
+                    }
+                    debug("Attention: VIDEO BITRATE - %lu \r\n", video_bitrate);
+                }
+                break;
+            case to_num('a','u','c','h'): // audio channels number
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32                 = get32v(&buffer[pos]);
+                    audio_channels      = t32;
+
+                    if(audio_channels < 1)
+                    {
+                        debug("Cannot set number of audio channels - %lu \r\n", audio_channels);
+                        audio_channels = 1;
+                    }
+                    else if(audio_channels > 2)
+                    {
+                        debug("Cannot set number of audio channels - %lu \r\n", audio_channels);
+                        audio_channels = 2;
+                    }
+                    debug("Attention: AUDIO CHANNELS - %lu \r\n", audio_channels);
+                }
+                break;
+
+            case to_num('v','s','r','c'): // active video input
+                if(version == 0)
+                {
+                    if(atom_size != 0x10)
+                    {
+                        break;
+                    }
+                    t32 = get32v(&buffer[pos]);
+                    if(t32 == 2)
+                    {
+                        hdmi_active         = 0;
+                        video_source_num    = 2;
+                        debug("Attention: DIGITAL INPUT IS ACTIVE\r\n");
+                    }
+                    else if(t32 == 1)
+                    {
+                        hdmi_active         = 1;
+                        video_source_num    = 1;
+                        debug("Attention: HDMI INPUT IS ACTIVE\r\n");
+                    }
+                    else if(t32 == 0)
+                    {
+                        hdmi_active         = 0;
+                        video_source_num    = 0;
+                        debug("Attention: ANALOG INPUT IS ACTIVE\r\n");
+                    }
+                }
+                break;
+
+            case to_num('f','r','e','e'):  
+                fclose(pFile);
+                pFile = NULL;
+                free (buffer);
+                return SUCCESS;
+            default:   
+                break;
+        }
+        pos += (atom_size - 12);
+    }
+
+    fclose(pFile);
+    pFile = NULL;
+    free (buffer);
+    return SUCCESS;
+}*/
+

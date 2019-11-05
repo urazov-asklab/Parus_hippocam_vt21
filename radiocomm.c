@@ -124,18 +124,15 @@ void *radioCommThrFxn(void *arg)
     RadioCommEnv   *envp                = (RadioCommEnv *) arg;    
     Command 		currentCommand;
 
-
-    rftx_stop = 0;
+    // rftx_stop = 0;
 
     if(init_rf())
     {
         ERR("Can't init RF\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
-        is_rftx_failed = 1;
+        // is_rftx_failed = 1;
         cleanup(THREAD_FAILURE, RFTX_QID);
     }
-
-    sem_init(&rfSem, 0, 0);
 
     /* Signal that initialization is done */
     if(envp->hRendezvousInit != NULL)
@@ -154,12 +151,12 @@ void *radioCommThrFxn(void *arg)
             goto cleanup;        
         }
 
-        rf_sleep_condition = 1;
+        radiocomm_sleeping = 1;
         sem_wait(&rfSem);
-        rf_sleep_condition = 0;//wakeup
+        radiocomm_sleeping = 0;//wakeup
 
         process_rx();
-
+        radiocomm_last_cmd_time = uptime();
 
         //UpdateInfo();
     }

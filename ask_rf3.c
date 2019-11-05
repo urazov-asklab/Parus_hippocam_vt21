@@ -4,7 +4,7 @@
 #include "cc1310_funcs.h"
 
 
-#define CCDEV   "cc1310"
+#define CCDEV   "/dev/cc1310"
 
 #define CONN_TIMEOUT        50//5 sec
 #define CONFIRM_TIMEOUT     10

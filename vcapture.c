@@ -179,7 +179,7 @@ void *vCaptureThrFxn(void *arg)
         ERR("Failed to create video capture device\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -194,7 +194,7 @@ void *vCaptureThrFxn(void *arg)
         {
             ERR("Detect video std failed!\r\n");
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -207,7 +207,7 @@ void *vCaptureThrFxn(void *arg)
                 {
                     ERR("video std not supported!\n");
                     is_rec_failed       = 1;
-                    is_rftx_failed      = 1;
+                    // is_rftx_failed      = 1;
                     is_stream_failed    = 1;
                     is_cap_finishing    = 1;
                     cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -217,7 +217,7 @@ void *vCaptureThrFxn(void *arg)
             {
                 ERR("video std not supported!\r\n");
                 is_rec_failed       = 1;
-                is_rftx_failed      = 1;
+                // is_rftx_failed      = 1;
                 is_stream_failed    = 1;
                 is_cap_finishing    = 1;
                 cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -260,7 +260,7 @@ void *vCaptureThrFxn(void *arg)
         {
             is_cam_failed       = 1;
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_SUCCESS, REC_QID | STRM_QID | RFTX_QID);
@@ -278,7 +278,7 @@ void *vCaptureThrFxn(void *arg)
     {
         ERR("Failed to calculate Buffer dimensions\n");
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -292,7 +292,7 @@ void *vCaptureThrFxn(void *arg)
         ERR("Failed to calculate size for video capture driver buffers\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -308,7 +308,7 @@ void *vCaptureThrFxn(void *arg)
         ERR("Failed to allocate contiguous buffers for video capture\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -322,7 +322,7 @@ void *vCaptureThrFxn(void *arg)
         ERR("Failed to allocate second part of contiguous buffers for video capture\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -360,7 +360,7 @@ void *vCaptureThrFxn(void *arg)
     {
         ERR("Failed to finish creating capture device\n");
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -401,7 +401,7 @@ void *vCaptureThrFxn(void *arg)
             ERR("Failed to get video capture buffer\r\n");
             logEvent(log_REC_APL_REC_RUNTIME_ERROR);
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -441,7 +441,7 @@ void *vCaptureThrFxn(void *arg)
                 ERR("Failed to put video capture buffer\r\n");
                 logEvent(log_REC_APL_REC_RUNTIME_ERROR);
                 is_rec_failed       = 1;
-                is_rftx_failed      = 1;
+                // is_rftx_failed      = 1;
                 is_stream_failed    = 1;
                 is_cap_finishing    = 1;
                 cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -466,7 +466,7 @@ void *vCaptureThrFxn(void *arg)
                     ERR("Failed to put video capture buffer\r\n");
                     logEvent(log_REC_APL_REC_RUNTIME_ERROR);
                     is_rec_failed       = 1;
-                    is_rftx_failed      = 1;
+                    // is_rftx_failed      = 1;
                     is_stream_failed    = 1;
                     is_cap_finishing    = 1;
                     cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -488,7 +488,7 @@ void *vCaptureThrFxn(void *arg)
             ERR("Video signal status changed!\n");
             is_cam_failed       = 1;
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -498,7 +498,7 @@ void *vCaptureThrFxn(void *arg)
             ERR("Detect video std failed!\n");
             is_cam_failed       = 1;
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -510,7 +510,7 @@ void *vCaptureThrFxn(void *arg)
                 ERR("video std changed!\n");
                 is_cam_failed       = 1;
                 is_rec_failed       = 1;
-                is_rftx_failed      = 1;
+                // is_rftx_failed      = 1;
                 is_stream_failed    = 1;
                 is_cap_finishing    = 1;
                 cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);

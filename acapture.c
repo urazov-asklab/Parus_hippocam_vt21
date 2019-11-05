@@ -116,7 +116,7 @@ void *aCaptureThrFxn(void *arg)
         ERR("Failed to create audio device\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -143,7 +143,7 @@ void *aCaptureThrFxn(void *arg)
 		fprintf (stderr, "Cannot open audio device (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -156,7 +156,7 @@ void *aCaptureThrFxn(void *arg)
 		ERR("Cannot allocate hardware parameter structure (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -170,7 +170,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot initialize hardware parameter structure (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -186,7 +186,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot set sample rate (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -215,7 +215,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot set sample format (%s)\r\n", snd_strerror (err)); 
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -229,7 +229,7 @@ void *aCaptureThrFxn(void *arg)
     	ERR("Сannot set access type (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -243,7 +243,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot set channel count (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -262,7 +262,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot set parameters (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -291,7 +291,7 @@ void *aCaptureThrFxn(void *arg)
 	    ERR("Сannot prepare audio interface for use (%s)\r\n", snd_strerror (err));
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -308,7 +308,7 @@ void *aCaptureThrFxn(void *arg)
         ERR("Failed to allocate contiguous audio buffers for capture\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         is_rec_failed       = 1;
-        is_rftx_failed      = 1;
+        // is_rftx_failed      = 1;
         is_stream_failed    = 1;
         is_cap_finishing    = 1;
         cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -430,7 +430,7 @@ void *aCaptureThrFxn(void *arg)
                     pthread_mutex_unlock(&wcond_mutex[eACAPTURE_SRC]);
                     logEvent(log_REC_APL_REC_RUNTIME_ERROR);
                     is_rec_failed       = 1;
-                    is_rftx_failed      = 1;
+                    // is_rftx_failed      = 1;
                     is_stream_failed    = 1;
                     is_cap_finishing    = 1;
                     cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -466,7 +466,7 @@ void *aCaptureThrFxn(void *arg)
                 ERR("Function snd_pcm_readi failed\r\n");
                 logEvent(log_REC_APL_REC_RUNTIME_ERROR);
                 is_rec_failed       = 1;
-                is_rftx_failed      = 1;
+                // is_rftx_failed      = 1;
                 is_stream_failed    = 1;
             }
         }
@@ -515,7 +515,7 @@ void *aCaptureThrFxn(void *arg)
             ERR("Failed to read from PCM\r\n");
             logEvent(log_REC_APL_REC_RUNTIME_ERROR);
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
@@ -572,7 +572,7 @@ void *aCaptureThrFxn(void *arg)
             ERR("Failed to read audio buffer\r\n");
             logEvent(log_REC_APL_REC_RUNTIME_ERROR);
             is_rec_failed       = 1;
-            is_rftx_failed      = 1;
+            // is_rftx_failed      = 1;
             is_stream_failed    = 1;
             is_cap_finishing    = 1;
             cleanup(THREAD_FAILURE, REC_QID | STRM_QID | RFTX_QID);
