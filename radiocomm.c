@@ -148,12 +148,13 @@ void *radioCommThrFxn(void *arg)
         if(currentCommand == FINISH)
         {
             //debug("Radiothread finishing...\r\n");
-            goto cleanup;        
+            goto cleanup;
         }
 
         radiocomm_sleeping = 1;
         sem_wait(&rfSem);
         radiocomm_sleeping = 0;//wakeup
+        rf_sleep_condition = 0;
 
         process_rx();
         radiocomm_last_cmd_time = uptime();

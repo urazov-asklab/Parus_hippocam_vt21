@@ -1,37 +1,6 @@
 /*
  * common.h
  *
- * Copyright (C) 2010 Texas Instruments Incorporated - http://www.ti.com/ 
- * 
- * 
- *  Redistribution and use in source and binary forms, with or without 
- *  modification, are permitted provided that the following conditions 
- *  are met:
- *
- *    Redistributions of source code must retain the above copyright 
- *    notice, this list of conditions and the following disclaimer.
- *
- *    Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the 
- *    documentation and/or other materials provided with the   
- *    distribution.
- *
- *    Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
- *  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
- *  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- *  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT 
- *  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
- *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT 
- *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- *  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- *  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
- *  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
- *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
 */
 
 #ifndef _COMMON_H
@@ -142,15 +111,6 @@
 #define MAX_BUF                 128
 #define MAX_STATUS_LENGTH       9
 
-typedef enum
-{							// Don't change the sequence !!!
-	CC1200_BR_1_2K,			// 0
-	CC1200_BR_250K,			// 1
-	CC1200_BR_1_2K_WOR,		// 2
-	CC1200_BR_57_6K,		// 3
-	CC1200_BR_UNKNOWN
-} rfSpeedType;
-
 /* Thread priorities */
 #define LOGGING_THREAD_PRIORITY         sched_get_priority_max(SCHED_FIFO) - 7
 #define UCPSERVICE_THREAD_PRIORITY      sched_get_priority_max(SCHED_FIFO) - 7
@@ -219,18 +179,16 @@ volatile u8             sound_only;
 
 volatile u8             go_to_wor;
 volatile u8             led_on;
-volatile u8             sleep_finished;
 volatile u8             after_wake_up;
 volatile u8             analog_mic_enable;
 volatile u8             got_key_frame;
 volatile u8             is_waked_from_rf;
 volatile u8             internal_error;
 volatile u8             sd_failed;
-volatile u8             is_event_occured;
 volatile u8             is_video_tx_started;
 volatile u8             is_video_captured;
 volatile u8             is_sd_mounted;
-volatile u8             is_rsz_started;
+//volatile u8             is_rsz_started;
 volatile u8             is_enc_started;
 volatile u8             is_cap_started;
 volatile u8             is_rec_started;         // device is recording video or audio file
@@ -241,8 +199,6 @@ volatile u8             is_stream_started;
 //volatile u8             is_rftx_request;
 volatile u8             is_rec_request;
 volatile u8             is_stream_request;
-volatile u8             is_sleep_request;
-volatile u8             is_finish_requets;
 //volatile u8             is_rftx_finishing;
 volatile u8             is_rec_finishing;
 volatile u8             is_stream_finishing;
@@ -252,9 +208,7 @@ volatile u8             is_stream_failed;
 //volatile u8             is_rftx_failed;
 volatile u8             is_rec_failed;
 volatile u8             is_memory_full;         // memory is full
-volatile u8             is_rf_sleep;            // radiochip is sleeping
-volatile rfSpeedType    rf_speed;
-volatile rfSpeedType    wor_speed;
+
 volatile u8             init_step;              // device is initializing
 volatile u32            last_rec_time;
 volatile u8             is_usb_on;
@@ -273,7 +227,6 @@ volatile int            cnt_tri;
 volatile int            cnt_sd;
 //volatile int            rftx_stop;
 volatile int            strm_error;
-//volatile int            chng_mask;
 
 volatile long long int  sd_freespace;
 volatile long long int  sd_totalspace;
@@ -304,18 +257,13 @@ volatile char           wifipass[13];
 volatile int            hdmi_active;
 //volatile int            change_dcam;
 
-volatile time_t         set_wor_time;
-volatile time_t         start_time;   
 volatile time_t         low_ch_time; 
 
-volatile struct timeval setting_wor_time;
-volatile struct timeval setting_wor_time2;
 volatile struct timeval indicate_time;
 volatile struct timeval indicate_time2;
 volatile struct timeval temp_time;
 volatile struct timeval temp_time2;
 volatile struct timeval prev_time;
-volatile struct timeval prev_st_time;
 
 volatile struct timespec net_file_prev_time;
 
@@ -335,10 +283,7 @@ volatile int            usb_cs_pin;
 volatile int            usb_vbus_ok_pin;
 volatile int  	        rf_pwr_on_pin;
 
-volatile int            cnt;
-volatile int            cnt_rf;
 volatile int            cnt_ch;
-volatile int            cnt_mem;
 volatile u32            device_addr;
 volatile u32            prev_temp_sens;
 volatile u32            temp_sens;

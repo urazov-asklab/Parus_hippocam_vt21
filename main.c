@@ -419,7 +419,7 @@ int check_sd_card()
                     sd_status       = SD_STATUS_EMPTY;
                     sd_totalspace   = 0;
                     sd_freespace    = 0;
-                    ERR("SD card does not exist\r\n");
+                    //ERR("SD card does not exist\r\n");
                     logEvent(log_REC_APL_SD_NO);
                     return FAILURE;
                 }
@@ -647,7 +647,7 @@ void dump_var(u32 chrage_status_logged, u32 is_chrg_on_status)
     PRINT_VAR(is_stream_finishing);
     PRINT_VAR(is_cap_finishing);
     PRINT_VAR(is_enc_finishing);
-    PRINT_VAR(is_rsz_started);
+    //PRINT_VAR(is_rsz_started);
     PRINT_VAR(is_rec_failed);
     //PRINT_VAR(is_rftx_failed);
     PRINT_VAR(is_stream_failed);
@@ -810,34 +810,34 @@ void change_command(Command* currCommand, int* start_rec_flag, u32  is_chrager_o
     //     // *(currCommand) = FINISH;
     // }
 
-    if(!is_cap_started && !is_enc_started && !is_rec_started //&& !is_rftx_started
+    if(!is_cap_started && !is_enc_started && !is_rec_started && !is_rec_request //&& !is_rftx_started
     	&& !is_usb_on && wifi_sleep_condition && rf_sleep_condition
         && (*(currCommand) != FINISH)
         /*&&(!is_rec_failed || is_memory_full)*/)
     {
-/*        dump_var();
         gblSetCmd(SLEEP);
-        *(currCommand) = SLEEP;*/
+        *(currCommand) = SLEEP;
     }
 }
 
-void poll_port_expander()
+int  poll_port_expander(u8 read_pe_anyway)
 {
     u32 val = 1;
     int change_mask = 0;
 
     gpio_get_value(port_int_pin, &val);
-    if(!val)
+    if(!val || read_pe_anyway)
     {//port expander interrupt active        
         change_mask = get_pe_change_mask();
         if(change_mask < 0)
-            return;
+            return 0;
         debug("port expander interrupt(ch.mask: 0x%.2x)\n", change_mask);
 
         if(change_mask == 0)
         {
-            debug("strange: interrupt is active but change_mask is 0\n");
-            return;
+            if(!read_pe_anyway)
+                debug("strange: interrupt is active but change_mask is 0\n");
+            return 0;
         }
         
         if(change_mask & PE_SW_PWR_ON)
@@ -879,6 +879,7 @@ void poll_port_expander()
             debug("but pwr on interrupt\n");
         }
     }
+    return 1;
 }
 
 int main(int argc, char *argv[])
@@ -904,13 +905,13 @@ int main(int argc, char *argv[])
     int                         video_failed                = 0;
     int                         stop_rec_reset              = 0;
     struct timeval              start_thread_time;
-    struct stat                 netfileinfo;
+    //struct stat                 netfileinfo;
     int                         sd_fails_cnt                = 0;
     // u32                         regValue;
 
     int                         prev_sdcard_status          = 1;
     u32                         is_chrg_on_status           = 0;
-    u32                         chrage_status_logged               = 0;
+    u32                         chrage_status_logged        = 0;
     int                         timeout                     = 60; // сек
 //    int 				        finish_app 					= 0;
     time_t                      start_tsens_time;
@@ -936,15 +937,12 @@ int main(int argc, char *argv[])
     charger_present 		= 0;
     charger_level           = 2;
     go_to_wor  				= 0;
-    sleep_finished          = 1;
     after_wake_up 			= 0;
     video_source_num        = 0;
     is_stream_request       = 0;
     is_rec_request          = 0;
     start_rec               = 0;
 //    is_rftx_request         = 0;
-    is_sleep_request        = 0;
-    is_finish_requets       = 0;
     got_key_frame           = 0;
     deinterlace_on          = 1;//
     mp4_vol_size            = 0;
@@ -975,14 +973,13 @@ int main(int argc, char *argv[])
     is_stream_finishing     = 0;
     is_cap_finishing        = 0;
     is_enc_finishing        = 0;
-    is_rsz_started          = 0;
+    //is_rsz_started          = 0;
     is_rec_failed           = 0;
 //    is_rftx_failed          = 0;
     is_stream_failed        = 0;
     is_memory_full          = 0;
     is_sd_mounted           = 0;
     last_rec_time           = 0;
-    is_event_occured        = 0;
     sound_only              = 0;
     need_to_create_log      = 0;
     is_access_point         = 0;
@@ -999,8 +996,6 @@ int main(int argc, char *argv[])
     frames_per_sec_rsz      = 0;
     video_bitrate           = 2000000;
     audio_channels          = 1;
-    rf_speed                = CC1200_BR_1_2K;
-    wor_speed               = CC1200_BR_1_2K_WOR;
     device_addr             = 0xFFFFFFFF;
     half_vrate 				= 0;
     analog_mic_enable 		= 1;
@@ -1010,9 +1005,6 @@ int main(int argc, char *argv[])
 
     last_sw_pwr_on          = 0;
     is_pwr_on               = 0;
-    cnt                     = 0;
-    cnt_rf                  = 0;
-    cnt_mem                 = 0;
     cnt_ch                  = 0;
     prev_temp_sens          = 0;
     is_usb_storage_started  = 0;
@@ -1031,6 +1023,16 @@ int main(int argc, char *argv[])
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_charge/brightness");
     system("/bin/echo 0 > /sys/devices/platform/leds-gpio/leds/led_stat/brightness");
     system("/bin/echo 1260 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0066/wireless_input_current_limit_mA");
+    //pm settings
+    system("echo 1 > /sys/kernel/debug/pm_debug/enable_off_mode");
+    system("echo disabled > /sys/devices/platform/omap/omap_uart.0/power/wakeup");
+    system("echo disabled > /sys/devices/platform/omap/omap_uart.1/power/wakeup");
+    system("echo disabled > /sys/devices/platform/omap/omap_uart.2/power/wakeup");
+    system("echo disabled > /sys/devices/platform/omap/omap_uart.3/power/wakeup");
+    system("echo 1 > /sys/devices/platform/omap/omap_uart.0/sleep_timeout");
+    system("echo 1 > /sys/devices/platform/omap/omap_uart.1/sleep_timeout");
+    system("echo 1 > /sys/devices/platform/omap/omap_uart.2/sleep_timeout");
+    system("echo 1 > /sys/devices/platform/omap/omap_uart.3/sleep_timeout");
 
     set_pe_interrupt_mask(PE_USB_VBUS_OK | PE_RF_PWR_ON | PE_SW_PWR_ON | PE_CHRG_INT | PE_BUT_PWR_ON);
 
@@ -1135,7 +1137,9 @@ int main(int argc, char *argv[])
     	cnt_restart    		= conv + 1;
     }
 
-    poll_port_expander();
+    gpio_get_value(sw_pwr_on_pin, (u32 *)&is_pwr_on);
+    last_sw_pwr_on = is_pwr_on;
+    is_usb_on = get_usb_status();            
 
     if(conv == 0)
     {
@@ -1195,7 +1199,7 @@ int main(int argc, char *argv[])
 
         dump_var(chrage_status_logged, is_chrg_on_status);
 
-        poll_port_expander();
+        poll_port_expander(0);
         process_rf_sleep_condition();
 
     	usleep(16700);
@@ -1284,236 +1288,228 @@ int main(int argc, char *argv[])
         	ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL); 
             if(currentCommand == SLEEP) // действия для перехода в сон
             {
-                //if(is_sleep_request == 1)
+                debug("Start sleeping\r\n");
+                gpio_set_value(wakeup_en_pin, 1);//блокируем прерывание на пробудку
+                if(poll_port_expander(1))//очищаем прерывание port_expander
                 {
-                    debug("Start sleeping\r\n");
-                    gpio_set_value(wakeup_en_pin, 1);//блокируем прерывание на пробудку
+                    gpio_set_value(wakeup_en_pin, 0);
+                    continue;//port_expander has some interrupt, don't go to sleep
+                }
 
-                    sleep_finished = 0;
+                logEvent(log_SYSTEM_SLEEP);
 
-                    logEvent(log_SYSTEM_SLEEP);
-
-            	    if (initMask & LOGGINGTHREADCREATED)  // выключаем нить логгирования
+                if (initMask & LOGGINGTHREADCREATED)  // выключаем нить логгирования
+                {
+                    if(hRendezvousFinishLG != NULL)
                     {
-                        if(hRendezvousFinishLG != NULL)
-                        {
-                            Rendezvous_meet(hRendezvousFinishLG);
-                        }
-    			        if(pthread_join(loggingThread, &ret) == 0) 
-                        {
-    			            if(ret == THREAD_FAILURE) 
-                            {
-    			                status = FAILURE;
-                                ERR("Failed to join logging thread\r\n");
-                                logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
-    			            }
-                            initMask = initMask & ~LOGGINGTHREADCREATED;
-    			        }
-
-    				    if(hRendezvousInitLG) 
-    				    {
-    				        Rendezvous_force(hRendezvousInitLG);
-    				    }
-    				    if(hRendezvousInitLG) 
-    				    {
-    				        Rendezvous_delete(hRendezvousInitLG);
-    				        hRendezvousInitLG = NULL;
-    				    }
-    				    if(hRendezvousFinishLG) 
-    				    {
-    				        Rendezvous_delete(hRendezvousFinishLG);
-    				        hRendezvousFinishLG = NULL;
-    				    }
-    			    }
-
-                    if(initMask & NETCOMMTHREADCREATED)     // выключаем нить отвечающую за установку сети
+                        Rendezvous_meet(hRendezvousFinishLG);
+                    }
+                    if(pthread_join(loggingThread, &ret) == 0) 
                     {
-                        if(hRendezvousFinishNC)
+                        if(ret == THREAD_FAILURE) 
                         {
-                            Rendezvous_meet(hRendezvousFinishNC);
+                            status = FAILURE;
+                            ERR("Failed to join logging thread\r\n");
+                            logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
                         }
-
-                        if(pthread_join(netCommThread, &ret) == 0) 
-                        {
-                            if(ret == THREAD_FAILURE) 
-                            {
-                                status = FAILURE;
-                                ERR("Failed to join netcommunication thread\r\n");
-                                logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
-                            }
-                            initMask = initMask & ~NETCOMMTHREADCREATED;
-                        }
-                        if(hRendezvousFinishNC) 
-                        {
-                            Rendezvous_delete(hRendezvousFinishNC);
-                            hRendezvousFinishNC = NULL;
-                        }
+                        initMask = initMask & ~LOGGINGTHREADCREATED;
                     }
 
+                    if(hRendezvousInitLG) 
+                    {
+                        Rendezvous_force(hRendezvousInitLG);
+                    }
+                    if(hRendezvousInitLG) 
+                    {
+                        Rendezvous_delete(hRendezvousInitLG);
+                        hRendezvousInitLG = NULL;
+                    }
+                    if(hRendezvousFinishLG) 
+                    {
+                        Rendezvous_delete(hRendezvousFinishLG);
+                        hRendezvousFinishLG = NULL;
+                    }
+                }
+
+                if(initMask & NETCOMMTHREADCREATED)     // выключаем нить отвечающую за установку сети
+                {
+                    if(hRendezvousFinishNC)
+                    {
+                        Rendezvous_meet(hRendezvousFinishNC);
+                    }
+
+                    if(pthread_join(netCommThread, &ret) == 0) 
+                    {
+                        if(ret == THREAD_FAILURE) 
+                        {
+                            status = FAILURE;
+                            ERR("Failed to join netcommunication thread\r\n");
+                            logEvent(log_REC_APL_INTERNAL_ERROR_OCCURED);
+                        }
+                        initMask = initMask & ~NETCOMMTHREADCREATED;
+                    }
+                    if(hRendezvousFinishNC) 
+                    {
+                        Rendezvous_delete(hRendezvousFinishNC);
+                        hRendezvousFinishNC = NULL;
+                    }
+                }
+
+                is_sd_mounted   = 0;
+
+                system("/bin/umount -v -f /media/card/");
+
+                sd_status       = SD_STATUS_EMPTY;
+                sd_totalspace   = 0;
+                sd_freespace    = 0;
+
+                system("/sbin/rmmod wlcore_sdio");  // выгружаем модуль wifi
+                
+                system("devmem2 0x48004E00 w 0x00000000 > /dev/null");//disable TV clock to allow dss go to off mode
+
+                gpio_set_value(usb_cs_pin, 0);
+                usleep(16700);
+
+                sync();
+                final_indication();
+                log_threads("GO TO SLEEP\r\n");
+                debug("GO TO SLEEP\r\n");
+                
+                gpio_set_dir(wakeup_en_pin, 0);//set input, разрешаем прерывание
+                system("/bin/echo mem > /sys/power/state");
+                // вcё - ушли в сон...
+                //================================SLEEP================================
+                // вышли из сна
+                gpio_set_dir(wakeup_en_pin, 1);
+                gpio_set_value(wakeup_en_pin, 0);
+
+                // log_threads("WAKE UP\r\n");
+
+                gblSetCmd(NO_COMMAND);
+
+                ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+
+                if(!(initMask & LOGGINGTHREADCREATED))
+                {
+                    hRendezvousInitLG              = Rendezvous_create(pairSync, &rzvAttrs);
+                    hRendezvousFinishLG            = Rendezvous_create(pairSync, &rzvAttrs);
+
+                    loggingEnv.hRendezvousInit     = hRendezvousInitLG;
+                    loggingEnv.hRendezvousFinishLG = hRendezvousFinishLG;
+
+                    if (pthread_create(&loggingThread, &attr, loggingThrFxn, &loggingEnv)) 
+                    {
+                        ERR("Failed to create logging thread\r\n");
+                        logEvent(log_REC_APL_INIT_FAILED);
+                    }
+                    else
+                    {
+                        initMask |= LOGGINGTHREADCREATED;
+
+                        // Wait loggingThread initialization
+                        if(hRendezvousInitLG != NULL)
+                        {
+                            Rendezvous_meet(hRendezvousInitLG);
+                        }
+                    }
+                }
+
+                //enable TV clock
+                system("devmem2 0x48004E00 w 0x00000004 > /dev/null");
+
+                ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL); 
+
+                system("/sbin/modprobe wlcore_sdio");
+
+                usleep(1000000);
+
+                prev_sdcard_status = is_sdcard_off_status;
+                if(check_sd_card_inserted() <= 0) // check sd card presence
+                    is_sdcard_off_status = 1;
+                else
+                    is_sdcard_off_status = 0;
+
+                if(is_sdcard_off_status)
+                {
+                    sd_failed       = 1;
                     is_sd_mounted   = 0;
-
-    				system("/bin/umount -v -f /media/card/");
-
-                    sd_status       = SD_STATUS_EMPTY;
                     sd_totalspace   = 0;
                     sd_freespace    = 0;
-
-                    system("/sbin/rmmod wlcore_sdio");  // выгружаем модуль wifi
-                    
-                    system("devmem2 0x48004E00 w 0x00000000 > /dev/null");//disable TV clock to allow dss go to off mode
-
-                    gpio_set_value(usb_cs_pin, 0);
-                    usleep(16700);
-
-                    sync();
-                    final_indication();
-                    log_threads("GO TO SLEEP\r\n");
-                    debug("GO TO SLEEP\r\n");
-                    
-                    gpio_set_dir(wakeup_en_pin, 0);//set input, разрешаем прерывание
-                    system("/bin/echo mem > /sys/power/state");
-                    // вcё - ушли в сон...
-                    //================================SLEEP================================
-                    // вышли из сна
-                    gpio_set_dir(wakeup_en_pin, 1);
-                    gpio_set_value(wakeup_en_pin, 0);
-                                        
-                    // log_threads("WAKE UP\r\n");
-
-                    gblSetCmd(NO_COMMAND);
-
-                    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-                    if(!(initMask & LOGGINGTHREADCREATED))
+                    sd_status       = SD_STATUS_EMPTY;
+                    if(prev_sdcard_status == 0)
                     {
-                        hRendezvousInitLG              = Rendezvous_create(pairSync, &rzvAttrs);
-                        hRendezvousFinishLG            = Rendezvous_create(pairSync, &rzvAttrs);
-
-                        loggingEnv.hRendezvousInit     = hRendezvousInitLG;
-                        loggingEnv.hRendezvousFinishLG = hRendezvousFinishLG;
-
-                        if (pthread_create(&loggingThread, &attr, loggingThrFxn, &loggingEnv)) 
+                        WARN("SD card isn't inserted\r\n");
+                        logEvent(log_REC_APL_SD_NO);
+                    }
+                }
+                else
+                {
+                    while(1)
+                    {
+                        ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+                        if(check_sd_card() == SUCCESS)
                         {
-                            ERR("Failed to create logging thread\r\n");
-                            logEvent(log_REC_APL_INIT_FAILED);
+                            sd_fails_cnt = 0;
+                            break;
                         }
                         else
                         {
-                            initMask |= LOGGINGTHREADCREATED;
-
-                            // Wait loggingThread initialization
-                            if(hRendezvousInitLG != NULL)
+                            sd_fails_cnt++;
+                            if(sd_fails_cnt >= 10)
                             {
-                                Rendezvous_meet(hRendezvousInitLG);
-                            }
-                        }
-                    }
-
-                    //enable TV clock
-                    system("devmem2 0x48004E00 w 0x00000004 > /dev/null");
-
-                    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL); 
-
-                    system("/sbin/modprobe wlcore_sdio");
-
-                    usleep(1000000);
-
-                    if(!(initMask & NETCOMMTHREADCREATED))
-                    {
-                        hRendezvousFinishNC            = Rendezvous_create(pairSync, &rzvAttrs);
-                        netCommEnv.hRendezvousFinishNC = hRendezvousFinishNC;
-
-                        if (pthread_create(&netCommThread, &attr, netCommThrFxn, &netCommEnv)) 
-                        {
-                            ERR("Failed to create netcommunication thread\r\n");
-                            logEvent(log_REC_APL_INIT_FAILED);
-                        }
-                        else
-                        {
-                            initMask |= NETCOMMTHREADCREATED;
-                        }
-                    }
-
-                    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-                    prev_sdcard_status = is_sdcard_off_status;
-                    if(check_sd_card_inserted() <= 0) // check sd card presence
-                        is_sdcard_off_status = 1;
-                    else
-                        is_sdcard_off_status = 0;
-
-                    if(is_sdcard_off_status)
-                    {
-                        sd_failed       = 1;
-                        is_sd_mounted   = 0;
-                        sd_totalspace   = 0;
-                        sd_freespace    = 0;
-                        sd_status       = SD_STATUS_EMPTY;
-                        if(prev_sdcard_status == 0)
-                        {
-                            WARN("SD card isn't inserted\r\n");
-                            logEvent(log_REC_APL_SD_NO);
-                        }
-                    }
-                    else
-                    {
-                        while(1)
-                        {
-                            ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-                            if(check_sd_card() == SUCCESS)
-                            {
-                                sd_fails_cnt = 0;
+                                sd_failed       = 1;
+                                WARN("Failed to open SD card(line: %i)\r\n", __LINE__);
+                                is_sd_mounted   = 0;
+                                sd_totalspace   = 0;
+                                sd_freespace    = 0;
+                                sd_status       = SD_STATUS_EMPTY;
                                 break;
                             }
-                            else
-                            {
-                                sd_fails_cnt++;
-                                if(sd_fails_cnt >= 10)
-                                {
-                                    sd_failed       = 1;
-                                    WARN("Failed to open SD card(line: %i)\r\n", __LINE__);
-                                    is_sd_mounted   = 0;
-                                    sd_totalspace   = 0;
-                                    sd_freespace    = 0;
-                                    sd_status       = SD_STATUS_EMPTY;
-                                    break;
-                                }
-                            }
-                            usleep(10000);
                         }
+                        usleep(10000);                 
                     }
+                }
 
-                    //======== reset if netsettings.txt was modified
-                    // для того, чтобы применить новые настройки, если они есть
-    				err = stat("/media/card/netsettings.txt", &netfileinfo);
-                    if(err != 0)
+                ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+
+                if(!(initMask & NETCOMMTHREADCREATED))
+                {
+                    hRendezvousFinishNC            = Rendezvous_create(pairSync, &rzvAttrs);
+                    netCommEnv.hRendezvousFinishNC = hRendezvousFinishNC;
+
+                    if (pthread_create(&netCommThread, &attr, netCommThrFxn, &netCommEnv)) 
                     {
-                        WARN("Cannot get status info from netsettings.txt \r\n");
+                        ERR("Failed to create netcommunication thread\r\n");
+                        logEvent(log_REC_APL_INIT_FAILED);
                     }
                     else
                     {
-                        if(netfileinfo.st_mtim.tv_sec > net_file_prev_time.tv_sec)
-                        {
-                            ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-                            sync();
-                            debug("Restart because of netsettings.txt modified...\r\n");
-                            system("/sbin/init 6");
-                        }
+                        initMask |= NETCOMMTHREADCREATED;
                     }
+                }                
 
-                    //========
-                    ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-                    start_time      = time(NULL);
-                    set_wor_time    = time(NULL);
-                    sleep_finished  = 1;
-
-                    debug("WAKE UP DONE \r\n");
-                }
-                /*else
+                //======== reset if netsettings.txt was modified
+                // для того, чтобы применить новые настройки, если они есть
+                /*err = stat("/media/card/netsettings.txt", &netfileinfo);
+                if(err != 0)
                 {
-                    WARN("Waiting for is_sleep_request\r\n");
+                    WARN("Cannot get status info from netsettings.txt \r\n");
+                }
+                else
+                {
+                    if(netfileinfo.st_mtim.tv_sec > net_file_prev_time.tv_sec)
+                    {
+                        ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+                        sync();
+                        debug("Restart because of netsettings.txt modified...\r\n");
+                        system("/sbin/init 6");
+                    }
                 }*/
+
+                //========
+                ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
+
+                debug("WAKE UP DONE \r\n");
             }
             /*else if(currentCommand == START_USB_STORAGE)
             {
@@ -3263,10 +3259,7 @@ int load_settings_from_cfg_file()
                     buffer[pos] = 0;
                     fseek(pFile , pos , SEEK_SET);
                     fwrite (buffer + pos , 1, 1, pFile);
-                    system(set_systime_cmd);
-
-                    start_time      = time(NULL);
-                    set_wor_time    = time(NULL);
+                    system(set_systime_cmd);                    
 
                     logEvent(log_WATCHES_NEW_TIME);
                 }

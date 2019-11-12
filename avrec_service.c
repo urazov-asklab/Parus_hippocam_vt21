@@ -1185,9 +1185,8 @@ u8 AVRecParamFunc(u8 act, u8 fType, u8 *data)
                     sprintf(set_systime_cmd, "/bin/date %02x%02x%02x%02x20%02x.%02x", real_time[4], real_time[3], 
                         real_time[2], real_time[1], real_time[5], real_time[0]);
                     debug("Attention: system date is %s\r\n", set_systime_cmd);
-                    system(set_systime_cmd);            
-                    start_time      = time(NULL);
-                    set_wor_time    = time(NULL);
+                    system(set_systime_cmd);
+                    
                     logEvent(log_WATCHES_NEW_TIME);
                     return SUCCESS;
                 default:
