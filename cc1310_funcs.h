@@ -13,6 +13,7 @@
 int	cc1310_init(char *dev);
 void cc1310_free();
 void cc1310_setup_connection();
+void cc1310_set_oe(u8 output_enable);
 
 int cc1310_get_status(u8*sta);
 int cc1310_read_reg(u8 reg, u8*val);

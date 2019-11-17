@@ -5,6 +5,7 @@
 
 
 int init_rf();
+int set_rf_mode();
 void release_rf();
 
 typedef enum ctrl_chan				// control channels
@@ -81,6 +82,7 @@ typedef enum ctrl_chan				// control channels
 
 //RF_STAT FIELDS
 #define RF_STAT_READY       0x80
+#define RF_STAT_RESET		0x40
 
 #define RS_MODE_OFF         0x00
 #define RS_MODE_MANUAL      0x01

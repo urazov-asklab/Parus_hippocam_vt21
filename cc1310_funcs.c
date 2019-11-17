@@ -16,6 +16,7 @@ u8	ccbuf[256];
 int rf_rst_pin;
 int rf_oe_pin;
 int rf_srdy_pin;
+int rf_mrdy_pin;
 
 
 int cc1310_write_reg(u8 reg, u8 val)
@@ -23,7 +24,7 @@ int cc1310_write_reg(u8 reg, u8 val)
 	int 	status;
 	struct 	cc1310_ioctl_p iop;
 
-	ccbuf[0] = CC_WRITE | (reg & 0x1F);
+	ccbuf[0] = CC_WRITE | (reg & 0x3F);
 	ccbuf[1] = val;
 	iop.buf  = ccbuf;
 	iop.len  = 2;
@@ -38,7 +39,7 @@ int cc1310_read_reg(u8 reg, u8 *val)
 	u32 	srdy = 1;
 	struct 	cc1310_ioctl_p iop;
 
-	ccbuf[0] = CC_READ | (reg & 0x1F);
+	ccbuf[0] = CC_READ | (reg & 0x3F);
 	iop.buf  = ccbuf;
 	iop.len  = 1;
 	status 	 = ioctl(cc1310_dev, CC1310_IOCTL_WRITE, (void*)&iop);
@@ -48,7 +49,7 @@ int cc1310_read_reg(u8 reg, u8 *val)
 		gpio_get_value(rf_srdy_pin, &srdy);
 		if(srdy == 0)
 			break;
-		usleep(1000);
+		usleep(100);
 	}
 	if(i == 10)
 		return FAILURE;
@@ -116,11 +117,13 @@ int	cc1310_init(char *dev)
 		ERR("Failed to open device: %s\r\n", dev);
 		return FAILURE;
 	}
+	debug("cc1310 dev opened\n");
 	
 	while(1)
 	{
 		ret = cc1310_get_status(&sta);
 		i++;
+		debug("cc1310 stat: 0x%.2x\n", sta);
 
 		if(ret || (sta & RF_STAT_READY))
 		{
@@ -150,17 +153,30 @@ void cc1310_setup_connection()
     rf_rst_pin  = RF_RST_VAL;
     rf_oe_pin   = RF_OE_VAL;
 	rf_srdy_pin	= RF_SRDY_VAL;
+	rf_mrdy_pin = RF_MRDY_VAL;
  
+	gpio_export(rf_mrdy_pin);
+	gpio_set_dir(rf_mrdy_pin, 1);
+	gpio_set_value(rf_mrdy_pin, 1);
+
     gpio_export(rf_rst_pin);
     gpio_set_dir(rf_rst_pin, 1);
-    gpio_set_value(rf_rst_pin, 0);
-    usleep(10000);
     gpio_set_value(rf_rst_pin, 1);
-
+    
     gpio_export(rf_oe_pin);
     gpio_set_dir(rf_oe_pin, 1);
     gpio_set_value(rf_oe_pin, 1);
 
 	gpio_export(rf_srdy_pin);
 	gpio_set_dir(rf_srdy_pin, 0);
+	
+	gpio_set_value(rf_rst_pin, 0);
+	usleep(10000);
+    gpio_set_value(rf_rst_pin, 1);
+	usleep(10000);
+}
+
+void cc1310_set_oe(u8 output_enable)
+{
+	gpio_set_value(rf_oe_pin, output_enable);
 }

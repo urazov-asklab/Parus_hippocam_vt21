@@ -1,4 +1,5 @@
 //ask_rf3.c
+#include <unistd.h> 
 
 #include "ask_rf3.h"
 #include "cc1310_funcs.h"
@@ -13,26 +14,42 @@
 
 int init_rf()
 {
-    u8 mode;
-
     cc1310_setup_connection();
+    cc1310_set_oe(1);
 
     if(cc1310_init(CCDEV) != SUCCESS)
         return FAILURE;
     
-    cc1310_write_reg(RF_CONNECT_TIMEOUT, CONN_TIMEOUT);
-    cc1310_write_reg(RF_CONFIRM_TIMEOUT, CONFIRM_TIMEOUT);
-    cc1310_write_reg(RF_WOR_CONFIG, WOR_TIMEOUT);
+    if(set_rf_mode() != SUCCESS)
+        return FAILURE;
 
-    //UpdateInfo();
+    return SUCCESS;
+}
+
+int set_rf_mode()
+{
+    u8 mode, r_mode;
+
+    usleep(10000);
 
     mode = (ASK_RF_3 << ASK_RF_SHIFT) | (MODE_ASK_RF << MODE_SHIFT);
     cc1310_write_reg(RF_MODE, mode);
+    usleep(10000);
+
+    if(cc1310_read_reg(RF_MODE, &r_mode) != SUCCESS)
+    {
+        debug("rf: mode reg read failed\n");
+        return FAILURE;
+    }
+
+    if(mode != r_mode)
+        debug("rf: mode reg write failed(wr: 0x%.2x, rd: 0x%.2x)\n", mode, r_mode);
 
     return SUCCESS;
 }
 
 void release_rf()
 {
+    cc1310_set_oe(0);
     cc1310_free();
 }
