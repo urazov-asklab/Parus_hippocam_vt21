@@ -117,6 +117,7 @@ $(TARGET):	$(OBJFILES) $(XDC_LFILE)
 	$(LINK.c) -o $@ $^ 
 	$(STRIP) $(TARGET)
 	cp $(TARGET) /tftpboot
+	sudo cp $(TARGET) /home/demon/work/vizir-WiFi/filesystem/opt
 
 $(OBJFILES):	%.o: %.c $(HEADERS) $(XDC_CFLAGS)
 	@echo Compiling $@ from $<..
