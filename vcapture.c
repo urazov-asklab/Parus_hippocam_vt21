@@ -387,7 +387,7 @@ void *vCaptureThrFxn(void *arg)
     {
         tvp5150_set_brightness(hCapture, cam_brightness + 78);
         tvp5150_set_contrast(hCapture, cam_contrast + 78);
-        tvp5150_set_saturation(hCapture, (int)(cam_saturation*25) + 78);
+        tvp5150_set_saturation(hCapture, cam_saturation + 78);
     }
 
     while (!gblGetQuit(REC_QID | STRM_QID | RFTX_QID)) 
