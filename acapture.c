@@ -55,7 +55,7 @@
 
 #include "acapture.h"
 
-#define PCM  				// !!! switch on for gained sound (K51, not for VT20)
+#define PCM  				// !!! switch on for gained sound (K51, not for VT21)
 #define PERIOD_DUR 	64
 
 
