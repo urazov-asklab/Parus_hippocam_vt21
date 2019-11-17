@@ -99,6 +99,7 @@
 #define EXT_CHRG_ON_VAL         196
 #define RF_RST_VAL              16
 #define RF_OE_VAL               27
+#define RF_MRDY_VAL             142
 #define RF_SRDY_VAL             143
 #define SDR_TEMP                115
 #define SD_CD                   78
@@ -152,12 +153,9 @@ volatile int            frames_per_sec;
 volatile int            frames_per_sec_rsz;
 volatile u16            half_vrate;
 
-volatile u8             samba_on;
 volatile u8             stop_netconnect;
 volatile u8             wifi_sleep_condition;//показатель того что wifi не имеет активности и можно засыпать
 volatile u8             rf_sleep_condition;//показатель того что рф не имеет активности и можно засыпать
-volatile u8             radiocomm_sleeping;
-volatile u32            radiocomm_last_cmd_time;
 volatile u8             is_netconnect_on;
 volatile u8             is_file_not_empty;
 volatile u8             is_sd_inserted;
@@ -192,7 +190,7 @@ volatile u8             is_sd_mounted;
 volatile u8             is_enc_started;
 volatile u8             is_cap_started;
 volatile u8             is_rec_started;         // device is recording video or audio file
-volatile u8             is_rec_on_cmd;          // device received a command to start recording
+//volatile u8             is_rec_on_cmd;          // device received a command to start recording
 volatile int            start_rec;
 //volatile u8             is_rftx_started;
 volatile u8             is_stream_started;
@@ -216,15 +214,12 @@ volatile u32            video_bitrate;
 volatile u32            audio_channels;
 volatile u32            cam_brightness;
 volatile u32            cam_contrast;
-volatile float          cam_saturation;
+volatile u32            cam_saturation;
 volatile int            cnt_restart;
 volatile int            fd_wdt;
 volatile int            digital_mic_gain;
 volatile int            analog_mic_gain1;
 volatile int            analog_mic_gain2;
-volatile int            cnt_snd;
-volatile int            cnt_tri;
-volatile int            cnt_sd;
 //volatile int            rftx_stop;
 volatile int            strm_error;
 
@@ -269,6 +264,7 @@ volatile struct timespec net_file_prev_time;
 
 sem_t  semaphore;    // оповещение о новом событии для логгирования
 sem_t  rfSem;
+volatile u8             update_dev_stat_only;//флаг о том что радионить разбужена только для обновления DevStat
 
 volatile u32            last_sw_pwr_on;
 volatile u32            is_pwr_on;

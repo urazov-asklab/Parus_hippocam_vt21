@@ -138,9 +138,8 @@ u32 getDeviceAddr()
             ERR("Cannot open /opt/config file\r\n");
             return 0XFFFFFFFF;
         }
-        // config content: 4 bytes(1) + 32 bytes(2) + 1 byte 44 (don't know why...)
-        // 1) [75500000 => 0x 04 80 09 E0 - K50 0000 - device number]
-        // 2) secret key
+        // config content: 4 bytes
+        // 1) [86210006 => 0x 05 23 75 26 - V(T)21 0000 - device number]
         read(fd, (void*) &device_addr, 4);
         close(fd);
         return device_addr;
