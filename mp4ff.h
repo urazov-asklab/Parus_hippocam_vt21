@@ -12,7 +12,7 @@
 
 #include "common.h"
 
-#define RESERVE_SPACE 	20480						// reserve RESERVE_SPACE kbytes for write tail
+#define RESERVE_SPACE 	5120//20480						// reserve RESERVE_SPACE kbytes for write tail
 
 typedef struct _moov_params
 {

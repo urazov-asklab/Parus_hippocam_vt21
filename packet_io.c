@@ -14,7 +14,7 @@
 #define MAX_CLASS_COUNT		4
 #define NP_ACKREQ_MASK		(1 << 2)
 
-const char	dev_type_str[] = "Parus-VT20-v1.00";
+const char	dev_type_str[] = "Parus-VT21-v1.00";
 
 const AppParameterDescr AppInterParameterDescr[parAppIntCount] = {
 	{1, 1},
