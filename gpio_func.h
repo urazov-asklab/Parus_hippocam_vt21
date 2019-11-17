@@ -13,6 +13,7 @@ int gpio_fd_open(u32 gpio);
 int gpio_fd_close(int fd);
 
 
+//Port Expander input pins
 #define PE_PORT_IN1     0x01
 #define PE_PORT_IN2     0x02
 #define PE_PORT_IN3     0x04
@@ -25,5 +26,13 @@ int gpio_fd_close(int fd);
 int get_pe_change_mask();
 int set_pe_interrupt_mask(u8 mask);
 
+//Port Expander output pins//in omap gpio order
+#define PE_PORT_OUT1        200
+#define PE_PORT_OUT2        201
+#define PE_PORT_OUT3        202
+#define PE_PWR_HOLDn        203
+#define PE_EXT_PWR_OUT_EN   204
+#define PE_EXT_PWR_IN_EN    205
+#define PE_PWR_RF_EN        206
 
 #endif /* _GPIO_FUNC_H */
