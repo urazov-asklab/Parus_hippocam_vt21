@@ -82,7 +82,7 @@ u8 SaveSettings()  // сохраняем текущие параметры в /o
 
     cam_brightness      = curr_settings.img_params.brightness - 78;
     cam_contrast        = curr_settings.img_params.contrast - 78;
-    cam_saturation      = (float)(curr_settings.img_params.saturation - 78) / (float) 10;
+    cam_saturation      = curr_settings.img_params.saturation - 78;
 
     half_vrate          = curr_settings.skip_factor;
     audio_channels      = curr_settings.sound_channels;
@@ -129,7 +129,7 @@ u8 SaveSettings()  // сохраняем текущие параметры в /o
         pFile = NULL;
         return FAILURE;
     }
-    if(fwrite((void*)&cam_saturation, sizeof(float), 1, pFile) != 1)
+    if(fwrite((void*)&cam_saturation, sizeof(u32), 1, pFile) != 1)
     {
         ERR("Cannot write appdata file (cam_saturation)\r\n");
         fclose(pFile);
@@ -213,7 +213,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
     struct tm       timeinfo;
     FILE           *pFile           = NULL;
     u32             t32;
-    float           tfloat;
     u16             t16;
     u8              t8;
     int             tint;
@@ -254,7 +253,7 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             fseek(pFile, 0, SEEK_END);
             fSize = ftell(pFile);
 
-            if(fSize < 4)
+            if(fSize < 37)
             {
                 WARN("Size of file /opt/appdata is wrong\r\n");
                 fclose(pFile);
@@ -280,14 +279,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             cam_brightness = (cam_brightness > 100) ? 100 : cam_brightness;
             cam_brightness = (t32 > 100) ? cam_brightness : t32;
 
-            if(fSize < 8)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
             if(fread((void*)&t32, sizeof(u32), 1, pFile) != 1)
             {
                 ERR("Cannot read appdata file\r\n");
@@ -298,43 +289,19 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             cam_contrast = (cam_contrast > 100) ? 100 : cam_contrast;
             cam_contrast = (t32 > 100) ? cam_contrast : t32;
 
-            if(fSize < 12)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
-            if(fread((void*)&tfloat, sizeof(float), 1, pFile) != 1)
+            if(fread((void*)&t32, sizeof(u32), 1, pFile) != 1)
             {
                 ERR("Cannot read appdata file\r\n");
                 fclose(pFile);
                 pFile = NULL;
                 break;
             }
-            cam_saturation = ((cam_saturation > 10) || (cam_saturation < 0)) ? 2 : cam_saturation;
-            cam_saturation = ((tfloat > 10) || (tfloat < 0)) ? cam_contrast : tfloat;
-
-            if(fSize < 16)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
+            cam_saturation = (cam_saturation > 100) ? 100 : cam_saturation;
+            cam_saturation = (t32 > 100) ? cam_saturation : t32;
 
             if(fseek(pFile, 4, SEEK_CUR) != 0)  // reserved for cam_hue
             {
                 ERR("Invalid appdata file\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
-            if(fSize < 20)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
                 fclose(pFile);
                 pFile = NULL;
                 break;
@@ -350,14 +317,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             video_bitrate = ((video_bitrate > 2000000) || (video_bitrate < 500000)) ? 2000000 : video_bitrate;
             video_bitrate = ((t32 > 2000000) || (t32 < 500000)) ? video_bitrate : t32;
 
-            if(fSize < 22)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
             if(fread((void*)&t16, sizeof(u16), 1, pFile) != 1)
             {
                 ERR("Cannot read appdata file\r\n");
@@ -367,14 +326,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             }
             half_vrate = ((half_vrate != 1) && (half_vrate != 0)) ? 0 : half_vrate;
             half_vrate = ((t16 == 1) || (t16 == 0)) ? t16 : half_vrate;
-
-            if(fSize < 26)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
 
             if(fread((void*)&t32, sizeof(u32), 1, pFile) != 1)
             {
@@ -386,14 +337,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             audio_channels = ((audio_channels != 1) && (audio_channels != 2)) ? 1 : audio_channels;
             audio_channels = ((t32 == 1) || (t32 == 2)) ? t32 : audio_channels;
 
-            if(fSize < 30)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
             if(fread((void*)&tint, sizeof(int), 1, pFile) != 1)
             {
                 ERR("Cannot read appdata file\r\n");
@@ -404,14 +347,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             analog_mic_gain1 = ((analog_mic_gain1 > 47) || (analog_mic_gain1 < 0)) ? 47 : analog_mic_gain1;
             analog_mic_gain1 = ((tint > 47) || (tint < 0)) ? analog_mic_gain1 : tint;
 
-            if(fSize < 34)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
-
             if(fread((void*)&tint, sizeof(int), 1, pFile) != 1)
             {
                 ERR("Cannot read appdata file\r\n");
@@ -421,14 +356,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             }
             analog_mic_gain2 = ((analog_mic_gain2 > 47) || (analog_mic_gain2 < 0)) ? 47 : analog_mic_gain2;
             analog_mic_gain2 = ((tint > 47) || (tint < 0)) ? analog_mic_gain2 : tint;
-
-            if(fSize < 35)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
 
             if(fread((void*)&t8, sizeof(u8), 1, pFile) != 1)
             {
@@ -441,13 +368,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             // video_source_num = ((video_source_num != 0) && (video_source_num != 1) && (video_source_num != 2)) ? 2;
             // video_source_num = ((t8 == 0) || (t8 == 1) || (t8 == 2)) ? t8 : video_source_num;
 
-            if(fSize < 36)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
 
             if(fread((void*)&t8, sizeof(u8), 1, pFile) != 1)
             {
@@ -458,14 +378,6 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
             }
             cam_voltage = ((cam_voltage != 12) && (cam_voltage != 10) && (cam_voltage != 5)) ? 12 : cam_voltage;
             cam_voltage = ((t8 == 12) || (t8 == 10) || (t8 == 5)) ? t8 : cam_voltage;
-
-            if(fSize < 37)
-            {
-                WARN("Size of file /opt/appdata is not full\r\n");
-                fclose(pFile);
-                pFile = NULL;
-                break;
-            }
 
             if(fread((void*)&t8, sizeof(u8), 1, pFile) != 1)
             {
@@ -485,7 +397,7 @@ u8 AVRecLoadSettings()      // загружаем последние сохра�
 
     curr_settings.img_params.brightness = cam_brightness + 78;
     curr_settings.img_params.contrast   = cam_contrast + 78;
-    curr_settings.img_params.saturation = cam_saturation * 10 + 78;
+    curr_settings.img_params.saturation = cam_saturation + 78;
 
     curr_settings.skip_factor           = half_vrate;
     curr_settings.framesize             = (video_bitrate / ((framerate >> half_vrate)/1000)) >> 3;
@@ -830,7 +742,7 @@ void *avRecServiceThrFxn(void *arg)
         usleep(10000);      // пауза, чтобы не занимать часто процессорное время
     }
 
-    cleanup:
+cleanup:
     
     if(DestroyService())
     {
