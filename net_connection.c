@@ -31,7 +31,34 @@
 #define PASS_SET                    4
 #define GOT_ALL_INFO                7
 
-u32 last_connected_time = 0;
+
+#define RANDEZVOUS_DEL(r)  if(r != NULL) { Rendezvous_delete(r); r = NULL; }
+
+#define THREAD_JOIN(m, r, th) if(initMask & m) { \
+                                    if(r != NULL)  Rendezvous_meet(r); \
+                                    if(pthread_join(th, &ret) == 0) \
+                                    { \
+                                        if(ret == THREAD_FAILURE) \
+                                        { \
+                                            status = THREAD_FAILURE; \
+                                            WARN("Failed to stop %s\r\n", #th); \
+                                        } \
+                                    } \
+                                }
+#define THREAD_JOIN_EX(m, r, th, fn) if(initMask & m) { \
+                                    fn(); \
+                                    if(r != NULL)  Rendezvous_meet(r); \
+                                    if(pthread_join(th, &ret) == 0) \
+                                    { \
+                                        if(ret == THREAD_FAILURE) \
+                                        { \
+                                            status = THREAD_FAILURE; \
+                                            WARN("Failed to stop %s\r\n", #th); \
+                                        } \
+                                    } \
+                                }
+
+u32 last_time_connected = 0;
 
 // найти в resource вхождение search и заменить его на replace
 char *str_replace(char *search, char *replace, char *resource)
@@ -99,7 +126,7 @@ int set_netbios_name()
 
     // на случай, если текущий файл испорчен - восстанавливаем его из образца
     system("cp /etc/smb0.conf /etc/smb.conf");
-    usleep(1000000);
+    //usleep(100000);
 
 start0:
     iters++;
@@ -497,25 +524,14 @@ int find_str(const char * pattern)
 // на основании полученного статуса сети проверяем - есть соединение или нет
 int check_wifi_connection()
 {
-    FILE *f1;
-    f1 = fopen("/tmp/wifi.log","wb"); // create or clear the file
-    if(f1 != NULL)
-    {
-        fclose(f1);
-    }
-    else
-    {
-        return FAILURE;
-    }
-
     if(is_access_point == 1)
     {
-        system("/usr/local/bin/hostapd_cli status >> /tmp/wifi.log");
+        system("/usr/local/bin/hostapd_cli status > /tmp/wifi.log");
         return find_str("num_sta[0]=1");
     }
     else
     {
-        system("/usr/local/sbin/wpa_cli status >> /tmp/wifi.log");
+        system("/usr/local/sbin/wpa_cli status > /tmp/wifi.log");
         return find_str("wpa_state=COMPLETED");
     }
 }
@@ -545,169 +561,167 @@ u8 ReadNetSettings()
         WARN("Cannot open file netsettings.txt\r\n");
         return FAILURE;
     }
-    else
+    
+    if(fseek(pFile, 0, SEEK_END) != 0)
     {
-        if(fseek(pFile, 0, SEEK_END) != 0)
-        {
-            WARN("Invalid file netsettings.txt\r\n");
-            fclose(pFile);
-            pFile = NULL;
-            return FAILURE;
-        }
+        WARN("Invalid file netsettings.txt\r\n");
+        fclose(pFile);
+        pFile = NULL;
+        return FAILURE;
+    }
 
-        net_file_size = ftell(pFile);
+    net_file_size = ftell(pFile);
 
-        if(net_file_size < 27)
-        {
-            WARN("Invalid size of file netsettings.txt\r\n");
-            fclose(pFile);
-            pFile = NULL;
-            return FAILURE;
-        }
+    if(net_file_size < 27)
+    {
+        WARN("Invalid size of file netsettings.txt\r\n");
+        fclose(pFile);
+        pFile = NULL;
+        return FAILURE;
+    }
 
-        net_line = (char *) malloc(net_file_size + 1);
-        if(net_line == NULL)
-        {
-            WARN("Cannot allocate memory for net_line\r\n");
-            fclose(pFile);
-            pFile = NULL;
-            return FAILURE;
-        }
+    net_line = (char *) malloc(net_file_size + 1);
+    if(net_line == NULL)
+    {
+        WARN("Cannot allocate memory for net_line\r\n");
+        fclose(pFile);
+        pFile = NULL;
+        return FAILURE;
+    }
 
-        if(fseek(pFile, 0, SEEK_SET) != 0)
-        {
-            WARN("Invalid file netsettings.txt\r\n");
-            free(net_line);
-            net_line = 0;
-            fclose(pFile);
-            pFile = NULL;
-            return FAILURE;
-        }
-
-        fread(net_line, 1, net_file_size, pFile);
-        net_line[net_file_size] = '\0';
-
-        for(y = 0; net_line[y] != '\0'; y++)
-        {
-            if(net_line[y] > 0x7F)
-            {
-                net_line[y] = ' ';
-            }
-        }
-
-        token = strtok(net_line," \n\r"); // don't free net_line until strtok used
-
-        while(token != NULL)
-        {
-            switch(parserStep)
-            {
-                case 0:
-                    if(strcasecmp(token, "mode:") == 0)
-                    {
-                        parserStep = 1;
-                    }
-                    else if(strcasecmp(token, "ssid:") == 0)
-                    {
-                        parserStep = 2;
-                    }
-                    else if(strcasecmp(token, "pwd:") == 0)
-                    {
-                        parserStep = 3;
-                    }
-                    else
-                    {
-                        WARN("Wrong syntax in netsettings.txt\r\n");
-                        token = NULL;
-                    }
-                    break;
-                case 1:
-                    if(strcasecmp(token, "abonent") == 0)
-                    {
-                        parserStep      = 0;
-                        t8              = 0;
-                        parserStatus    = parserStatus | MODE_SET;
-                    }
-                    else if(strcasecmp(token, "ap") == 0)
-                    {
-                        parserStep      = 0;
-                        t8              = 1;
-                        parserStatus    = parserStatus | MODE_SET;
-                    }
-                    else
-                    {
-                        WARN("Wrong syntax in netsettings.txt\r\n");
-                        token = NULL;
-                    }
-                    break;
-                case 2:
-                    if(token != NULL)
-                    {
-                        parserStep      = 0;
-                        memset(tempssid, 0, 13);
-
-                        i = strlen(token);
-                        if((i > 12) || (i < 1))
-                        { 
-                            WARN("Wrong syntax in netsettings.txt\r\n");
-                            token = NULL;
-                        }
-                        else
-                        {
-                            memcpy(tempssid, token, i);
-                            parserStatus = parserStatus | SSID_SET;
-                        }
-                    }
-                    else
-                    {
-                        WARN("Wrong syntax in netsettings.txt\r\n");
-                        token = NULL;
-                    }
-                    break;
-                case 3:
-                    if(token != NULL)
-                    {
-                        parserStep      = 0;
-                        memset(temppass, 0, 13);
-
-                        i = strlen(token);
-                        if((i > 12) || (i < 8))
-                        { 
-                            WARN("Wrong syntax in netsettings.txt\r\n");
-                            token = NULL;
-                        }
-                        else
-                        {
-                            memcpy(temppass, token, i);
-                            parserStatus = parserStatus | PASS_SET;
-                        }
-                    }
-                    else
-                    {
-                        WARN("Wrong syntax in netsettings.txt\r\n");
-                        token = NULL;
-                    }
-                    break;
-            }
-
-            if(parserStatus == GOT_ALL_INFO) // вся необходимая информация нашлась в файле настроек
-            {
-                is_access_point = t8;
-                memcpy((void *)wifissid, (void *)tempssid, 13);
-                memcpy((void *)wifipass, (void *)temppass, 13);
-                break;
-            }
-
-            if(token != NULL)
-            {
-                token = strtok(NULL," \n\r");
-            }
-        }
-
+    if(fseek(pFile, 0, SEEK_SET) != 0)
+    {
+        WARN("Invalid file netsettings.txt\r\n");
         free(net_line);
         net_line = 0;
         fclose(pFile);
         pFile = NULL;
+        return FAILURE;
     }
+
+    fread(net_line, 1, net_file_size, pFile);
+    net_line[net_file_size] = '\0';
+
+    for(y = 0; net_line[y] != '\0'; y++)
+    {
+        if(net_line[y] > 0x7F)
+        {
+            net_line[y] = ' ';
+        }
+    }
+
+    token = strtok(net_line," \n\r"); // don't free net_line until strtok used
+
+    while(token != NULL)
+    {
+        switch(parserStep)
+        {
+            case 0:
+                if(strcasecmp(token, "mode:") == 0)
+                {
+                    parserStep = 1;
+                }
+                else if(strcasecmp(token, "ssid:") == 0)
+                {
+                    parserStep = 2;
+                }
+                else if(strcasecmp(token, "pwd:") == 0)
+                {
+                    parserStep = 3;
+                }
+                else
+                {
+                    WARN("Wrong syntax in netsettings.txt\r\n");
+                    token = NULL;
+                }
+                break;
+            case 1:
+                if(strcasecmp(token, "abonent") == 0)
+                {
+                    parserStep      = 0;
+                    t8              = 0;
+                    parserStatus    = parserStatus | MODE_SET;
+                }
+                else if(strcasecmp(token, "ap") == 0)
+                {
+                    parserStep      = 0;
+                    t8              = 1;
+                    parserStatus    = parserStatus | MODE_SET;
+                }
+                else
+                {
+                    WARN("Wrong syntax in netsettings.txt\r\n");
+                    token = NULL;
+                }
+                break;
+            case 2:
+                if(token != NULL)
+                {
+                    parserStep      = 0;
+                    memset(tempssid, 0, 13);
+
+                    i = strlen(token);
+                    if((i > 12) || (i < 1))
+                    { 
+                        WARN("Wrong syntax in netsettings.txt\r\n");
+                        token = NULL;
+                    }
+                    else
+                    {
+                        memcpy(tempssid, token, i);
+                        parserStatus = parserStatus | SSID_SET;
+                    }
+                }
+                else
+                {
+                    WARN("Wrong syntax in netsettings.txt\r\n");
+                    token = NULL;
+                }
+                break;
+            case 3:
+                if(token != NULL)
+                {
+                    parserStep      = 0;
+                    memset(temppass, 0, 13);
+
+                    i = strlen(token);
+                    if((i > 12) || (i < 8))
+                    { 
+                        WARN("Wrong syntax in netsettings.txt\r\n");
+                        token = NULL;
+                    }
+                    else
+                    {
+                        memcpy(temppass, token, i);
+                        parserStatus = parserStatus | PASS_SET;
+                    }
+                }
+                else
+                {
+                    WARN("Wrong syntax in netsettings.txt\r\n");
+                    token = NULL;
+                }
+                break;
+        }
+
+        if(parserStatus == GOT_ALL_INFO) // вся необходимая информация нашлась в файле настроек
+        {
+            is_access_point = t8;
+            memcpy((void *)wifissid, (void *)tempssid, 13);
+            memcpy((void *)wifipass, (void *)temppass, 13);
+            break;
+        }
+
+        if(token != NULL)
+        {
+            token = strtok(NULL," \n\r");
+        }
+    }
+
+    free(net_line);
+    net_line = 0;
+    fclose(pFile);
+    pFile = NULL;
 
     // save modification time
     err = stat("/media/card/netsettings.txt", &netfileinfo);
@@ -742,21 +756,27 @@ void check_nc_files_debug()
 
 void check_wifi_sleep_condition(void)
 {
-    //TODO:should update last_connected_time
-
-    if(!is_netconnect_on)
+    if(stop_netconnect)
     {
-        wifi_sleep_condition = 1;
+        if(!is_netconnect_on)
+            wifi_sleep_condition = 1;
+        else
+            return;
     }
     else
     {
-        if(uptime() - last_connected_time > 5*60)
-        {
-            wifi_sleep_condition = 1;
-        }
+        if(is_netconnect_on)
+            wifi_sleep_condition = 0;
         else
         {
-            wifi_sleep_condition = 0;
+            if(uptime() - last_time_connected > 5*60)
+            {
+                wifi_sleep_condition = 1;
+            }
+            else
+            {
+                wifi_sleep_condition = 0;
+            }
         }
     }
 }
@@ -798,9 +818,10 @@ void *netCommThrFxn(void *arg)
     AVRecServiceEnv             avRecServiceEnv;
     UCPServiceEnv             	ucpServiceEnv;
 
-    last_connected_time = 0;
+    last_time_connected = uptime();
+    wifi_sleep_condition = 0;
 
-    dev_addr = getDeviceAddr() - 86200000;
+    dev_addr = getDeviceAddr() - 86210000;
 
     // ssid и пароль по умолчанию на основе адреса устройства
     sprintf((char *)wifissid, "PA%04lu", dev_addr);
@@ -824,17 +845,22 @@ void *netCommThrFxn(void *arg)
         logEvent(log_REC_APL_INIT_FAILED);
         cleanup(THREAD_FAILURE, STRM_QID);
     }
+    /* Initialize the thread attributes */
+    if (pthread_attr_init(&attr)) 
+    {
+        ERR("Failed to initialize thread attrs\r\n");
+        logEvent(log_REC_APL_INIT_FAILED);
+        cleanup(THREAD_FAILURE, STRM_QID);
+    }
 
     // остановить wifi, что то одно может быть запущено
-    system("/usr/bin/killall hostapd");
-    system("/usr/bin/killall wpa_supplicant");
-    usleep(1000000);
+    system("/usr/bin/killall hostapd > /dev/null");
+    system("/usr/bin/killall wpa_supplicant > /dev/null");
+    //usleep(1000000);
 
     //присваиваем адрес чтобы приложения нормально открыли себе сокеты
     system("/sbin/ifconfig wlan0 192.168.0.1 up");
     usleep(1000000);
-    // для правильной работы библиотеки live для видеотрансляции
-    system("/sbin/route add -host 228.67.43.91 dev wlan0");
     system("/sbin/ifconfig wlan0 down");
 
     remove("/var/run/hostapd/wlan0");
@@ -843,7 +869,6 @@ void *netCommThrFxn(void *arg)
 
     if(!network_off)
     {
-        wifi_sleep_condition = 0;
         if(is_access_point == 1)
         {
             // поднимаем точку доступа
@@ -865,6 +890,8 @@ void *netCommThrFxn(void *arg)
             // ждем присоединения к внешней точке доступа
             while(1)
             {
+                check_wifi_sleep_condition();
+
                 connect_res = check_wifi_connection();
                 if(connect_res == SUCCESS)
                 {
@@ -874,7 +901,7 @@ void *netCommThrFxn(void *arg)
                 currentCommand = gblGetCmd();
                 if((currentCommand == FINISH) || (currentCommand == SLEEP))
                 {
-                    //debug("Net connection thread finishing ...\r\n");
+                    debug("Net connection get sleep/finish command(%i) ...\r\n", __LINE__);
                     goto cleanup;
                 }
             }
@@ -891,15 +918,15 @@ void *netCommThrFxn(void *arg)
             currentCommand = gblGetCmd();
             if((currentCommand == FINISH) || (currentCommand == SLEEP))
             {
-                // debug("Net connection thread finishing ...\r\n");
+                debug("Net connection get sleep/finish command(%i) ...\r\n", __LINE__);
                 goto cleanup;
             }
             usleep(1000000);
         }
 
         // для правильной работы библиотеки live для видеотрансляции
-        //system("/sbin/route add -host 228.67.43.91 dev wlan0");
-        last_connected_time = uptime();
+        system("/sbin/route add -host 228.67.43.91 dev wlan0");
+        last_time_connected = uptime();
     }
 
     // сеть есть - можем запустить файловый сервер
@@ -908,17 +935,11 @@ void *netCommThrFxn(void *arg)
         WARN("Netbios name is not set!\r\n");
     }
 
-    if(samba_on == 0)
-    {
-        samba_on = 1;
-
-        usleep(1000000);
-        debug("Starting smbd...\r\n");
-        system("/sbin/smbd -D");
-        usleep(1000000);
-        debug("Starting nmbd...\r\n");
-        system("/sbin/nmbd -D");
-    }
+    debug("Starting smbd...\r\n");
+    system("/sbin/smbd -D");
+    usleep(100000);
+    debug("Starting nmbd...\r\n");
+    system("/sbin/nmbd -D");    
 
     Dmai_clear(wisStreamEnv);
     Dmai_clear(settingServerEnv);
@@ -937,14 +958,6 @@ void *netCommThrFxn(void *arg)
         (hRendezvousFinishWSS  == NULL))
     {
     	ERR("Failed to create hRendezvousInitSetServ object\r\n");
-        logEvent(log_REC_APL_INIT_FAILED);
-        cleanup(THREAD_FAILURE, STRM_QID);
-    }
-
-    /* Initialize the thread attributes */
-    if (pthread_attr_init(&attr)) 
-    {
-        ERR("Failed to initialize thread attrs\r\n");
         logEvent(log_REC_APL_INIT_FAILED);
         cleanup(THREAD_FAILURE, STRM_QID);
     }
@@ -1017,8 +1030,6 @@ void *netCommThrFxn(void *arg)
     initMask |= AVRECSERVICETHREADCREATED;
 
     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-
 
     // запустить стриминг с камеры через wifi(устройство начинает ожидать запроса на стриминг)
 #ifdef SOUND_EN
@@ -1097,11 +1108,12 @@ void *netCommThrFxn(void *arg)
                 connect_res = check_wifi_connection();
                 if(connect_res == FAILURE)
                 {
-                    //is_netconnect_on = 0;//==
+                    is_netconnect_on = 0;
                 }
                 else
                 {
                     is_netconnect_on = 1;
+                    last_time_connected = uptime();
                     if((prev_state == FAILURE) && (is_access_point == 0)
                         && (wis_video_hw_started == 0) && (wis_audio_hw_started == 0))
                     {
@@ -1117,19 +1129,19 @@ void *netCommThrFxn(void *arg)
             {
                 if(is_access_point == 1)
                 {
-                    system("/usr/bin/killall hostapd");
-                    system("/usr/bin/killall udhcpd");
+                    system("/usr/bin/killall hostapd > /dev/null");
+                    system("/usr/bin/killall udhcpd > /dev/null");
                 }
                 else
                 {
                     // остановить wifi
-                    system("/usr/bin/killall wpa_supplicant");
+                    system("/usr/bin/killall wpa_supplicant > /dev/null");
+                    system("/usr/bin/killall udhcpc > /dev/null");
                 }
                 usleep(2000000);
 
                 network_off         = 1;
                 is_netconnect_on    = 0;
-                wifi_sleep_condition = 1;
             }
         }
         else if(stop_netconnect == 0) // если по радиоканалу пришел сигнал ВКЛючения сети
@@ -1184,10 +1196,9 @@ void *netCommThrFxn(void *arg)
                 system("/sbin/route add -host 228.67.43.91 dev wlan0");
 
                 network_off         = 0;
-                last_connected_time = uptime();
+                last_time_connected = uptime();
             }
         }
-
 
         // если поменялись параметры аудио/видео
         if((reboot_now || strm_error || 
@@ -1253,7 +1264,7 @@ void *netCommThrFxn(void *arg)
     }
 
 cleanup:
-    debug("Net connection thread finishing...\r\n");
+    debug("Net connection thread finishing(%i)...\r\n", __LINE__);
 
 	is_netconnect_on = 0;
 
@@ -1279,134 +1290,39 @@ cleanup:
 	    pthread_mutex_unlock(&socket_mutex);
         usleep(50000);
 	}
-
-    if(initMask & WISSTREAMTHREADCREATED)
-    {
-    	wis_stop_streaming();
-
-        if(hRendezvousFinishWSS != NULL)
-        {
-            Rendezvous_meet(hRendezvousFinishWSS);
-        }
-
-    	if(pthread_join(wisStreamThread, &ret) == 0)
-    	{
-	        if(ret == THREAD_FAILURE)
-	        {
-	            status = THREAD_FAILURE;
-                WARN("Failed to stop wisStreamThread\r\n");
-	        }
-	    }
-    }
-
-    if(initMask & UCPSERVICETHREADCREATED) 
-    {
-        if(hRendezvousFinishUS != NULL)
-        {
-            Rendezvous_meet(hRendezvousFinishUS);
-        }
-
-        if (pthread_join(ucpServiceThread, &ret) == 0) 
-        {
-            if (ret == THREAD_FAILURE) 
-            {
-                status = THREAD_FAILURE;
-                WARN("Failed to stop ucpServiceThread\r\n");
-            }
-        }
-    }
-
-    if(initMask & SETTINGSERVERTHREADCREATED) 
-    {
-        if(hRendezvousFinishSS != NULL)
-        {
-            Rendezvous_meet(hRendezvousFinishSS);
-        }
-
-        if(pthread_join(settingServerThread, &ret) == 0) 
-        {
-            if(ret == THREAD_FAILURE) 
-            {
-                status = THREAD_FAILURE;
-                WARN("Failed to stop settingServerThread\r\n");
-            }
-        }
-    }
-
-    if(initMask & AVRECSERVICETHREADCREATED) 
-    {
-        if(hRendezvousFinishAS != NULL)
-        {
-            Rendezvous_meet(hRendezvousFinishAS);
-        }
-
-        if(pthread_join(avRecServiceThread, &ret) == 0) 
-        {
-            if(ret == THREAD_FAILURE) 
-            {
-                status = THREAD_FAILURE;
-                WARN("Failed to stop avRecServiceThread\r\n");
-            }
-        }
-    }
-
-    if(hRendezvousFinishSS != NULL) 
-    {
-        Rendezvous_delete(hRendezvousFinishSS);
-        hRendezvousFinishSS = NULL;
-    }
     
-    if(hRendezvousFinishAS != NULL) 
-    {
-        Rendezvous_delete(hRendezvousFinishAS);
-        hRendezvousFinishAS = NULL;
-    }
+    THREAD_JOIN_EX(WISSTREAMTHREADCREATED, hRendezvousFinishWSS, wisStreamThread, wis_stop_streaming);
+    THREAD_JOIN(UCPSERVICETHREADCREATED, hRendezvousFinishUS, ucpServiceThread);
+    THREAD_JOIN(SETTINGSERVERTHREADCREATED, hRendezvousFinishSS, settingServerThread);
+    THREAD_JOIN(AVRECSERVICETHREADCREATED, hRendezvousFinishAS, avRecServiceThread);
     
-    if(hRendezvousFinishWSS != NULL) 
-    {
-        Rendezvous_delete(hRendezvousFinishWSS);
-        hRendezvousFinishWSS = NULL;
-    }
+    RANDEZVOUS_DEL(hRendezvousFinishSS);
+    RANDEZVOUS_DEL(hRendezvousFinishAS);
+    RANDEZVOUS_DEL(hRendezvousFinishWSS);    
+    RANDEZVOUS_DEL(hRendezvousFinishUS);
+    RANDEZVOUS_DEL(hRendezvousInitSetServ);
     
-    if(hRendezvousFinishUS != NULL) 
-    {
-        Rendezvous_delete(hRendezvousFinishUS);
-        hRendezvousFinishUS = NULL;
-    }
-
-    if(hRendezvousInitSetServ != NULL) 
-    {
-        Rendezvous_delete(hRendezvousInitSetServ);
-        hRendezvousInitSetServ = NULL;
-    }
-
     pthread_mutex_destroy(&socket_mutex);
-	pthread_cond_destroy(&socket_cond);
+	pthread_cond_destroy(&socket_cond);    
     pthread_attr_destroy(&attr);
-
+    
+    // остановить wifi
     if(is_access_point == 1)
     {
-        system("/usr/bin/killall hostapd");
-        system("/usr/bin/killall udhcpd");
-        //usleep(1000000);
+        system("/usr/bin/killall udhcpd > /dev/null");
+        system("/usr/bin/killall hostapd > /dev/null");        
     }
     else
-    {
-        // остановить wifi
-        system("/usr/bin/killall wpa_supplicant");
-        system("/usr/bin/killall udhcpc");
-        //usleep(500000);
+    {        
+        system("/usr/bin/killall udhcpc > /dev/null");
+        system("/usr/bin/killall wpa_supplicant > /dev/null");        
     }
-
-    system("/usr/bin/killall smbd");
-    system("/usr/bin/killall nmbd");
-
-    usleep(1000000);
-
-    if(envp->hRendezvousFinishNC != NULL)
-    {
+    
+    system("/usr/bin/killall smbd > /dev/null");
+    system("/usr/bin/killall nmbd > /dev/null");
+    
+    if(envp->hRendezvousFinishNC)
         Rendezvous_meet(envp->hRendezvousFinishNC);
-    }
 
     debug("NetComm thread finished\r\n");
     return status;
