@@ -156,7 +156,7 @@ void check_temp_sensor()
     }
 }
 
-int check_charge_status()
+int check_battery_status()
 {
     char    buf[MAX_BUF];
     char    ch[MAX_STATUS_LENGTH];
@@ -579,6 +579,7 @@ int check_sd_card()
         return FAILURE;
     }
 
+    sd_failed = 0;
     sd_status = SD_STATUS_READY;
     pthread_mutex_lock(&sd_mount_mutex);
     pthread_cond_broadcast(&sd_mount_cond);
@@ -599,8 +600,7 @@ void led_blink(int interval, int times)
 	}
 }
 
-
-// индикация перед уходом в сон и полным отключением (сейчас не используется)
+// индикация перед уходом в сон
 void final_indication()
 {
 	if((leds_always == 0) && (is_usb_on == 0))
@@ -622,7 +622,7 @@ void final_indication()
     }
 }
 
-void dump_var(u32 chrage_status_logged, u32 is_chrg_on_status)
+void dump_var(u32 battery_status_logged, u32 battery_status)
 {
 #define PRINT_VAR(a)    printf(#a ": %i\n", a)
 #define PRINT_VARc(a)   printf(#a ": %s\n", a)
@@ -637,7 +637,8 @@ void dump_var(u32 chrage_status_logged, u32 is_chrg_on_status)
     PRINT_VAR(is_video_tx_started);
     PRINT_VAR(is_video_captured);
     PRINT_VAR(is_rec_started);
-    PRINT_VAR(is_rec_on_cmd);
+    //PRINT_VAR(is_rec_on_cmd);
+    PRINT_VAR(is_rec_request);
 //    PRINT_VAR(is_rftx_started);
     PRINT_VAR(is_stream_started);
     PRINT_VAR(is_cap_started);
@@ -653,49 +654,27 @@ void dump_var(u32 chrage_status_logged, u32 is_chrg_on_status)
     PRINT_VAR(is_stream_failed);
     PRINT_VAR(is_memory_full);
     PRINT_VAR(is_sd_mounted);
+    PRINT_VAR(sd_failed);
     PRINT_VAR(is_usb_on);
     PRINT_VAR(start_rec);
     PRINT_VAR((int)currentCommand);
-    PRINT_VAR((int)is_chrg_on_status);
-    PRINT_VAR((int)chrage_status_logged);
-    PRINT_VAR(radiocomm_sleeping);
+    PRINT_VAR((int)battery_status);
+    PRINT_VAR((int)battery_status_logged);
     PRINT_VAR(rf_sleep_condition);
     PRINT_VAR(wifi_sleep_condition);
     PRINT_VAR(is_netconnect_on);
-}
-
-void process_rf_sleep_condition()
-{
-    if(!radiocomm_sleeping)
-    {
-        rf_sleep_condition = 0;
-        return;
-    }
-    rf_sleep_condition = (uptime() - radiocomm_last_cmd_time > 10);
+    PRINT_VAR(stop_netconnect);
+    PRINT_VAR(internal_error);
 }
 
 // формируем команду для управления основным автоматом программы
-void change_command(Command* currCommand, int* start_rec_flag, u32  is_chrager_on, u32  charge_status_fixed) 
-                                //, unsigned int* initMask, int* finish_app
+void change_command(Command* currCommand, int* start_rec_flag, u32  is_battery_ok, u32  battery_status_fixed)
 {
-    // if((is_rec_started == 1)&&(sound_only == 0)&&(video_failed == 1))
-    // {
-    //      if(is_rec_started == 1)
-    //         {
-    //             is_rec_request = 0;
-    //         }
-    //         else
-    //         {
-    //             gblSetCmd(FINISH);
-    //             *(currCommand) = FINISH;
-    //         }
-    // }
-
-    if((is_chrager_on == 0) || (charge_status_fixed == 1))
+    /*if(!is_battery_ok && battery_status_fixed  && !charge_low)
     {
     	charge_low = 1;
     	debug("Low charge level. Will shutdown now...\r\n");
-    }
+    }*/
 
     if((wis_video_hw_started || wis_audio_hw_started) && !charge_low && !is_stream_request)
     {
@@ -708,7 +687,6 @@ void change_command(Command* currCommand, int* start_rec_flag, u32  is_chrager_o
 
     if((*start_rec_flag) && !is_memory_full && !charge_low && !is_sdcard_off_status)
     {
-    	//*start_rec_flag = 0; //==
         is_rec_request 	= 1;
     }
     else
@@ -818,6 +796,14 @@ void change_command(Command* currCommand, int* start_rec_flag, u32  is_chrager_o
         gblSetCmd(SLEEP);
         *(currCommand) = SLEEP;
     }
+
+    if(!is_cap_started && !is_enc_started && !is_rec_started && !is_rec_request //&& !is_rftx_started
+    	&& !is_usb_on && charge_low)
+    {
+        gblSetCmd(FINISH);
+        *(currCommand) = FINISH;
+    }
+
 }
 
 int  poll_port_expander(u8 read_pe_anyway)
@@ -831,7 +817,6 @@ int  poll_port_expander(u8 read_pe_anyway)
         change_mask = get_pe_change_mask();
         if(change_mask < 0)
             return 0;
-        debug("port expander interrupt(ch.mask: 0x%.2x)\n", change_mask);
 
         if(change_mask == 0)
         {
@@ -839,6 +824,7 @@ int  poll_port_expander(u8 read_pe_anyway)
                 debug("strange: interrupt is active but change_mask is 0\n");
             return 0;
         }
+        debug("port expander interrupt(ch.mask: 0x%.2x)\n", change_mask);
         
         if(change_mask & PE_SW_PWR_ON)
         {
@@ -864,14 +850,15 @@ int  poll_port_expander(u8 read_pe_anyway)
 
         if(change_mask & PE_RF_PWR_ON)
         {
-            u32 rf_wkup = 0;
+            //u32 rf_wkup = 0;
 
             debug("rf interrupt\n");
-            gpio_get_value(rf_pwr_on_pin, &rf_wkup);
-            if(rf_wkup)
-            {
+            //gpio_get_value(rf_pwr_on_pin, &rf_wkup);
+            //if(rf_wkup)
+            //{
+                //react anyway
                 sem_post(&rfSem);//wakeup radiocomm
-            }
+            //}
         }
 
         if(change_mask & PE_BUT_PWR_ON)
@@ -901,23 +888,20 @@ int main(int argc, char *argv[])
     void                       *ret;
     VideoStd_Type               captureStd                  = VideoStd_AUTO;    
     int                         status                      = SUCCESS;
-    int                         iters                       = 0;
-    int                         video_failed                = 0;
-    int                         stop_rec_reset              = 0;
+    int                         iters                       = 0;    
     struct timeval              start_thread_time;
     //struct stat                 netfileinfo;
     int                         sd_fails_cnt                = 0;
     // u32                         regValue;
 
     int                         prev_sdcard_status          = 1;
-    u32                         is_chrg_on_status           = 0;
-    u32                         chrage_status_logged        = 0;
-    int                         timeout                     = 60; // сек
+    u32                         battery_status              = 0;
+    u32                         battery_status_logged       = 0;
+    int                         wdt_timeout                 = 60; // сек
 //    int 				        finish_app 					= 0;
     time_t                      start_tsens_time;
     time_t                      check_sd_time;
 
-    samba_on                = 0;
     sd_partitions_flag      = -1;
     strm_error              = 0;
     is_sd_inserted          = 0;
@@ -930,8 +914,6 @@ int main(int argc, char *argv[])
     stop_netconnect         = 1;//0xFF;
     wifi_sleep_condition    = 0;
     rf_sleep_condition      = 0;
-    radiocomm_last_cmd_time = 0;
-    radiocomm_sleeping      = 0;
     is_cam_failed           = 0;
     cam_channel_num 		= 0;
     charger_present 		= 0;
@@ -946,9 +928,6 @@ int main(int argc, char *argv[])
     got_key_frame           = 0;
     deinterlace_on          = 1;//
     mp4_vol_size            = 0;
-    cnt_tri                 = 0;
-    cnt_sd                  = 0;
-    cnt_snd                 = 0;
     led_on                  = 0;
     leds_always             = 1;
     color_video             = 1;
@@ -957,13 +936,13 @@ int main(int argc, char *argv[])
     analog_mic_gain2		= 50;
     cam_brightness          = 50;
     cam_contrast            = 50;
-    cam_saturation          = 2;
+    cam_saturation          = 50;
     cam_voltage             = 12;
     init_step               = 1;
     is_video_tx_started     = 0;
     is_video_captured       = 0;
     is_rec_started          = 0;
-    is_rec_on_cmd           = 0;
+    //is_rec_on_cmd           = 0;
 //    is_rftx_started         = 0;
     is_stream_started       = 0;
     is_cap_started          = 0;
@@ -982,7 +961,7 @@ int main(int argc, char *argv[])
     last_rec_time           = 0;
     sound_only              = 0;
     need_to_create_log      = 0;
-    is_access_point         = 0;
+    is_access_point         = 1;
     sleep_on_radio          = 1;
     is_usb_on               = 0;
     internal_error          = 0;
@@ -1016,6 +995,7 @@ int main(int argc, char *argv[])
     rsz_width               = 0;
 
     pairSync                = 2;
+    update_dev_stat_only    = 0;
 
 
     // гасим все светодиоды, устанавливаем ограничение по току 
@@ -1105,7 +1085,7 @@ int main(int argc, char *argv[])
         cleanup(FAILURE, REC_QID | STRM_QID | RFTX_QID);
     }
 
-    ioctl(fd_wdt, WDIOC_SETTIMEOUT, &timeout); // setting time for wdt reset
+    ioctl(fd_wdt, WDIOC_SETTIMEOUT, &wdt_timeout); // setting time for wdt reset
 
     // если при вызове передали аргумент в виде числа, то это число рассматривается как количество неудачных 
     // перезапусков программы до этого
@@ -1197,10 +1177,9 @@ int main(int argc, char *argv[])
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
-        dump_var(chrage_status_logged, is_chrg_on_status);
+        dump_var(battery_status_logged, battery_status);
 
-        poll_port_expander(0);
-        process_rf_sleep_condition();
+        poll_port_expander(0);        
 
     	usleep(16700);
     	iters++;
@@ -1258,29 +1237,31 @@ int main(int argc, char *argv[])
         //     is_stream_started = 0;
         // }
 
-        if(cnt_restart > 6)  // если запись видео заканчивалась неуспешно больше 6 раз - запускаем только аудио
-        {
-        	sound_only = 1;
-        }
+        // if(cnt_restart > 6)  // если запись видео заканчивалась неуспешно больше 6 раз - запускаем только аудио
+        // {
+        // 	sound_only = 1;
+        // }
 
         currentCommand = gblGetCmd();
 
-	    is_chrg_on_status   = check_charge_status();
+	    battery_status   = check_battery_status();
 
-	   	if(is_chrg_on_status == 0)
+	   	if(battery_status == 0)
 	    {
-	        if(chrage_status_logged == 0)
+	        if(battery_status_logged == 0)
 	        {
+                debug("Low charge level. Will shutdown now...\r\n");
 	            logEvent(log_SYSTEM_DEADPOWER);
-	            chrage_status_logged = 1;
+	            battery_status_logged = 1;
+                charge_low = 1;
 	        }
 	    }
         else
         {
-            chrage_status_logged = 0;
+            battery_status_logged = 0;
         }
 
-		change_command(&currentCommand, (int *)&start_rec, is_chrg_on_status, chrage_status_logged); //,&initMask,  (int *)&finish_app
+		change_command(&currentCommand, (int *)&start_rec, battery_status, battery_status_logged); //,&initMask,  (int *)&finish_app
 
         log_threads("(main)analyze cmd\r\n");
         if(currentCommand != NO_COMMAND)
@@ -1355,8 +1336,21 @@ int main(int argc, char *argv[])
                     }
                 }
 
-                is_sd_mounted   = 0;
+                //WakeUp radiocomm thread to update DevStat but not to rx something
+                update_dev_stat_only = 1;
+                sem_post(&rfSem);
+                for(i=0; i<10; i++)
+                {
+                    usleep(10000);
+                    if(!update_dev_stat_only)
+                        break;                    
+                }
 
+                //Save current time, usually it is done during reboot or power-off, 
+                //but device is sleeping, not rebooting or powering off often
+                system("/etc/init.d/save-rtc.sh");
+
+                is_sd_mounted   = 0;
                 system("/bin/umount -v -f /media/card/");
 
                 sd_status       = SD_STATUS_EMPTY;
@@ -1386,6 +1380,7 @@ int main(int argc, char *argv[])
                 // log_threads("WAKE UP\r\n");
 
                 gblSetCmd(NO_COMMAND);
+                wifi_sleep_condition = 0;
 
                 ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
 
@@ -1487,24 +1482,6 @@ int main(int argc, char *argv[])
                         initMask |= NETCOMMTHREADCREATED;
                     }
                 }                
-
-                //======== reset if netsettings.txt was modified
-                // для того, чтобы применить новые настройки, если они есть
-                /*err = stat("/media/card/netsettings.txt", &netfileinfo);
-                if(err != 0)
-                {
-                    WARN("Cannot get status info from netsettings.txt \r\n");
-                }
-                else
-                {
-                    if(netfileinfo.st_mtim.tv_sec > net_file_prev_time.tv_sec)
-                    {
-                        ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-                        sync();
-                        debug("Restart because of netsettings.txt modified...\r\n");
-                        system("/sbin/init 6");
-                    }
-                }*/
 
                 //========
                 ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
@@ -1649,7 +1626,7 @@ int main(int argc, char *argv[])
                     else if(is_rec_request)
                     {
                         target_qid      = REC_QID;
-                        is_rec_on_cmd   = 1;
+                        //is_rec_on_cmd   = 1;
                     }
                     // else if(is_rftx_request)
                     // {
@@ -1897,7 +1874,7 @@ int main(int argc, char *argv[])
 
             else if(currentCommand == START_REC)
             {
-                is_rec_on_cmd   = 1;            	
+                //is_rec_on_cmd   = 1;
             	is_rec_failed 	= 0;
 
                 if(is_rec_started == 0)
@@ -2182,79 +2159,6 @@ int main(int argc, char *argv[])
 
                     is_cap_started      = 0;
 
-/*закомментирован механизм перезагрузки приложения после останова захвата каждый раз */
-//                     // if (!(initMask & RADIOCOMMTHREADCREATED))
-//                     // {
-//                     // 	finish_app = 1;
-//                     //	if (is_usb_on == 0)
-// 		            //    {
-// 		            //    	status = SUCCESS;
-// 		            //    }
-// 		            //    else
-// 		            //    {
-// 				    //		status = RESTART;
-// 		            //    }
-//                     // }
-//                     // else
-// 	                // {
-// 			    		 status = RESTART;
-// 	                // }
-
-// 	                // if ((is_chrg_on_status == 0) || (chrage_status_logged == 1))
-// 	                // {
-// 	                // 	status = SUCCESS;
-// 	                // }
-// 	                if(((is_rec_failed == 1)||(is_rftx_failed == 1)||(is_stream_failed == 1))
-//                         &&(is_memory_full == 0))
-// 	                {
-// 	                	cnt_restart++;
-// 	                }
-
-                    // CMEM_exit();
-
-                    // system("rmmod cmemk 2>/dev/null");
-
-                    // usleep(1000000);
-
-                    // system("modprobe cmemk phys_start=0x88000000 phys_end=0x90000000 allowOverlap=1 useHeapIfPoolUnavailable=1");
-
-
-                    // if(CMEM_init() == -1)
-                    // {
-                    //     ERR("Failed to initialize CMEM\r\n");
-                    // }
-
-//  	                gblSetCmd(FINISH);
-//                     currentCommand = FINISH;
-
-//                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-// 				    if(status == SUCCESS)
-// 				    {
-// 				    	logEvent(log_SYSTEM_NORMAL_POWEROFF);
-// 				    }
-// 				    else
-// 				    {
-// 				    	logEvent(log_NO_EVENT);
-// 				    }
-
-//                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-// 	                if (initMask & RADIOCOMMTHREADCREATED) 
-// 	                {
-// 	                	Rendezvous_meet(hRendezvousFinishRC);
-// 	                }
-                    
-//                     ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-
-// 	                if (initMask & LOGGINGTHREADCREATED) 
-// 	                {
-// 	                	Rendezvous_meet(hRendezvousFinishLG);
-// 	            	}
-
-// 	            	stop_rec_reset = 1;
-/*закомментирован механизм перезагрузки приложения после останова захвата каждый раз */
-
                     debug("STOPPED AUDIO AND VIDEO CAPTURE\r\n");
 
                     is_cap_finishing    = 0;
@@ -2325,7 +2229,7 @@ int main(int argc, char *argv[])
 
             else if(currentCommand == STOP_REC)
             {
-            	is_rec_on_cmd = 0;
+            	//is_rec_on_cmd = 0;
 
                 if(is_rec_started == 1)
                 {
@@ -2486,21 +2390,15 @@ int main(int argc, char *argv[])
             else if(currentCommand == FINISH)
             {
                 debug("FINISH received...\r\n");
-
-                logEvent(log_SYSTEM_NORMAL_POWEROFF);
-
-                /*if(initMask & RADIOCOMMTHREADCREATED) 
-                {
-                	Rendezvous_meet(hRendezvousFinishRC);
-                }*/
-                if(initMask & LOGGINGTHREADCREATED) 
-                {
+                
+                logEvent(log_SYSTEM_DEADPOWER);//This log must be to wakeup logging thread
+                
+                if(initMask & LOGGINGTHREADCREATED)
                 	Rendezvous_meet(hRendezvousFinishLG);
-            	}
-                if(initMask & NETCOMMTHREADCREATED) 
-                {
+
+                if(initMask & NETCOMMTHREADCREATED)
                     Rendezvous_meet(hRendezvousFinishNC);
-                }
+
                 cleanup(SUCCESS, REC_QID | STRM_QID | RFTX_QID);
             }
             else
@@ -2573,28 +2471,21 @@ cleanup:
 
     /* Make sure the other threads aren't waiting for init to complete */
     if(hRendezvousInitVR)
-    {
         Rendezvous_force(hRendezvousInitVR);
-    }
+
 /*    if(hRendezvousInitRFTX)
-    {
         Rendezvous_force(hRendezvousInitRFTX);
-    }*/
+    */
     if(hRendezvousInitRC)
-    {
         Rendezvous_force(hRendezvousInitRC);    
-    }
+    
     if(hRendezvousInitLG) 
-    {
         Rendezvous_force(hRendezvousInitLG);
-    }
 
     if(initMask & STREAMBUFFSTHREADCREATED)
     {
         if(hRendezvousFinishSTRM)
-        {
             Rendezvous_force(hRendezvousFinishSTRM);
-        }
 
     	if(pthread_join(streamBuffsThread, &ret) == 0)
     	{
@@ -2607,7 +2498,12 @@ cleanup:
 
     if(initMask & RADIOCOMMTHREADCREATED)
     {
-        sem_wait(&rfSem);
+        update_dev_stat_only = 1;
+        sem_post(&rfSem);
+
+        if(hRendezvousFinishRC)
+            Rendezvous_force(hRendezvousFinishRC);
+
         if(pthread_join(radioCommThread, &ret) == 0) 
         {
             if(ret == THREAD_FAILURE) 
@@ -2641,9 +2537,7 @@ cleanup:
     if(initMask & INDICATIONTHREADCREATED) 
     {
         if(hRendezvousFinishI)
-        {
             Rendezvous_meet(hRendezvousFinishI);
-        }
 
         if(pthread_join(indicationThread, &ret) == 0) 
         {
@@ -2658,15 +2552,6 @@ cleanup:
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
     }
-
-    // останавливаем самба-сервер, который поднимается в netCommThread нити
-    system("/usr/bin/killall -s 2 smbd");
-    usleep(2000000);
-    system("/usr/bin/killall -s 2 nmbd");
-    usleep(2000000);
-    system("/usr/bin/killall -s 9 smbd");
-    system("/usr/bin/killall -s 9 nmbd");
-    usleep(1000000);
 
     if(initMask & NETCOMMTHREADCREATED) 
     {
@@ -2798,7 +2683,6 @@ cleanup:
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
     }
 
-
     clearEventRingBuf();
     sem_destroy(&semaphore);
     if(fd_wdt != -1)
@@ -2806,62 +2690,43 @@ cleanup:
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
     }
 
-
-    if(stop_rec_reset == 0)
+    // save log file on the sd card
+    if(need_to_create_log == 1)
     {
-	    // save log file on the sd card
-	   	if(need_to_create_log == 1)
-	   	{
-	    	system("/bin/cp /opt/device.log /media/card/");
-            // system("/bin/cp /opt/device.log /media/mmcblk0/");
-	    }
-	}
-	else
-	{
-		if(video_failed == 1)
-        {
-            if(fd_wdt != -1)
-            {
-                ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
-            }
-    		sync();
-    		debug("Restart...\r\n");
-        	system("/sbin/init 6");
-        }
-	    else if(status != SUCCESS)
-	    {
-	    	status = cnt_restart;
-	    	//debug("cnt_restart %i \r\n", cnt_restart);
-	    }
-	}
+        system("/bin/cp /opt/device.log /media/card/");
+        // system("/bin/cp /opt/device.log /media/mmcblk0/");
+    }
 
     if(fd_wdt != -1)
     {
         ioctl(fd_wdt, WDIOC_KEEPALIVE, NULL);
     }
 
+    if(fd_wdt != -1)
+    {
+        err = close(fd_wdt);
+    }
+    sync(); // записываем всё на диск, иначе файловая система находится в режиме с отложенной записью 
+
     if(status == SUCCESS)
     {
-        //system("/bin/echo 240 > /sys/devices/platform/omap/omap_i2c.2/i2c-2/2-0068/int_mask");
+        set_pe_interrupt_mask(PE_USB_VBUS_OK | PE_CHRG_INT | PE_BUT_PWR_ON);
+
+        system("/sbin/rmmod wlcore_sdio");  // выгружаем модуль wifi чтобы выключить питание RF части
+
+        gpio_export(PE_PWR_RF_EN);
+        gpio_set_dir(PE_PWR_RF_EN, 1);
+        gpio_set_value(PE_PWR_RF_EN, 0);
 
         final_indication();
-        // записываем всё на диск, иначе файловая система находится в режиме с отложенной записью 
-        sync(); 
-        if(fd_wdt != -1)
-        {
-            close(fd_wdt);
-        }
+    
         debug("Shutdown...\r\n");
         system("/sbin/init 0");
     }
     else
     {
-        if(fd_wdt != -1)
-        {
-            err = close(fd_wdt);
-        }
-        sync();
-        debug("Rerun %i%i...\r\n", err, errno);
+        debug("Reboot %i%i...\r\n", err, errno);
+        system("/sbin/init 6");
     }
 
     debug("Exit done! %i\r\n", status);
