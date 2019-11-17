@@ -12,6 +12,11 @@
 #include "common.h"
 #include "indication.h"
 
+int            cnt_snd = 0;
+int            cnt_tri = 0;
+int            cnt_sd = 0;
+int            cnt_nov = 0;
+
 
 void *indicationThrFxn(void *arg)
 {
@@ -71,62 +76,62 @@ void *indicationThrFxn(void *arg)
         }
         else if(internal_error == 1)
         {
-                if(led_on == 1)
+            if(led_on == 1)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
                 }
-                else
+            }
+            else
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
                 }
+            }
         }
 
-        else if((is_sd_mounted == 0)||is_sdcard_off_status)
+        else if((is_sd_mounted == 0)||is_sdcard_off_status || ((is_cam_failed) && (is_rec_request))) 
         {
-                if(cnt_sd == 0)
+            if(cnt_sd == 0)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_sd++;
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_sd++;
                 }
-                else if(cnt_sd == 1)
+            }
+            else if(cnt_sd == 1)
+            {
+                if(diff_usecs >= 700000)
                 {
-                    if(diff_usecs >= 700000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_sd++;
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_sd++;
                 }
-                else if(cnt_sd == 2)
+            }
+            else if(cnt_sd == 2)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_sd++;
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_sd++;
                 }
-                else if(cnt_sd == 3)
+            }
+            else if(cnt_sd == 3)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_sd = 0;
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_sd = 0;
                 }
+            }
         }
 
         else if(is_rec_started == 1)
@@ -194,79 +199,80 @@ void *indicationThrFxn(void *arg)
 
         else if(is_stream_started  == 1)
         {
-                if(cnt_tri == 0)
+            if(cnt_tri == 0)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri++;
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri++;
                 }
-                else if(cnt_tri == 1)
+            }
+            else if(cnt_tri == 1)
+            {
+                if(diff_usecs >= 500000)
                 {
-                    if(diff_usecs >= 500000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri++;
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri++;
                 }
-                else if(cnt_tri == 2)
+            }
+            else if(cnt_tri == 2)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri++;
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri++;
                 }
-                else if(cnt_tri == 3)
+            }
+            else if(cnt_tri == 3)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri++;
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri++;
                 }
-                else if(cnt_tri == 4)
+            }
+            else if(cnt_tri == 4)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri++;
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri++;
                 }
-                else if(cnt_tri == 5)
+            }
+            else if(cnt_tri == 5)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                        cnt_tri = 0;
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
+                    cnt_tri = 0;
                 }
+            }
         }
+        
         else
         {
-                if(led_on == 1)
+            if(led_on == 1)
+            {
+                if(diff_usecs >= 100000)
                 {
-                    if(diff_usecs >= 100000)
-                    {
-                        led_on = 0;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                    }
+                    led_on = 0;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
                 }
-                else
+            }
+            else
+            {
+                if(diff_usecs >= 900000)
                 {
-                    if(diff_usecs >= 900000)
-                    {
-                        led_on = 1;
-                        gettimeofday((struct timeval *)&indicate_time, NULL);  
-                    }
+                    led_on = 1;
+                    gettimeofday((struct timeval *)&indicate_time, NULL);  
                 }
+            }
         } 
 
         fd_led = open("/sys/devices/platform/leds-gpio/leds/led_stat/brightness", O_WRONLY);
